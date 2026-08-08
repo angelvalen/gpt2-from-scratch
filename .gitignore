@@ -1,0 +1,8 @@
+*pretest
+*~
+*.pyc
+*.pt
+*.pkl
+.idea/
+out/
+.venv
