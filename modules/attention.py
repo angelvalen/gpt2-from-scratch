@@ -34,8 +34,17 @@ class CausalSelfAttention(nn.Module):
   def attention(self, key, query, value, attention_mask):
 
     ### YOUR CODE HERE
-    raise NotImplementedError
+    d_k = self.attention_head_size
+    att_score = torch.matmul(query, key.transpose(-1, -2)) / torch.sqrt(torch.tensor(d_k, dtype=float))
 
+    seq_len = query.shape[-2]
+    causal_mask = - torch.triu(torch.ones(seq_len, seq_len), diagonal=1) * 10000.0
+    att_masked = att_score + causal_mask + attention_mask # Causal and padding mask
+
+    att_probs = self.dropout(torch.softmax(att_masked, dim=-1)) # Dropout to probs, as in original GPT2
+    output = torch.matmul(att_probs, value)
+    output_concat = rearrange(output, 'b h t d -> b t (h d)')
+    return output_concat
 
   def forward(self, hidden_states, attention_mask):
     """
