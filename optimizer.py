@@ -61,7 +61,33 @@ class AdamW(Optimizer):
                 ###
                 ###       Refer to the default project handout for more details.
                 ### YOUR CODE HERE
-                raise NotImplementedError
 
+                # Get State
+                m = state.get("m", 0)
+                v = state.get("v", 0)
+                t = state.get("t", 0)
+
+                b1 = group["betas"][0]
+                b2 = group["betas"][1]
+
+                # Update and save state
+                t += 1
+                m = b1 * m + (1 - b1) * grad
+                v = b2 * v + (1 - b2) * grad * grad
+                self.state[p] = {
+                    "m": m,
+                    "v": v,
+                    "t": t,
+                }
+
+                # Update params
+                if group["correct_bias"]:
+                    alpha_t = alpha * math.sqrt(1 - b2**t) / (1 - b1**t)
+                else:
+                    alpha_t = alpha
+                p.data -= alpha_t * m / (torch.sqrt(v) + group["eps"])
+
+                # Weight decay
+                p.data = (1 - alpha * group["weight_decay"]) * p.data
 
         return loss
