@@ -52,10 +52,15 @@ class ParaphraseGPT(nn.Module):
     super().__init__()
     self.gpt = GPT2Model.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
     self.paraphrase_detection_head = nn.Linear(args.d, 2)  # Paraphrase detection has two outputs: 1 (yes) or 0 (no).
+    self.paraphrase_dropout = nn.Dropout(args.paraphrase_dropout_prob)
 
-    # By default, fine-tune the full model.
+    # Choos to fine-tune full model or just last layer
+    assert args.fine_tune_mode in ["last-linear-layer", "full-model"]
     for param in self.gpt.parameters():
-      param.requires_grad = True
+      if args.fine_tune_mode == 'last-linear-layer':
+        param.requires_grad = False
+      elif args.fine_tune_mode == 'full-model':
+        param.requires_grad = True
 
   def forward(self, input_ids, attention_mask):
     """
@@ -72,8 +77,10 @@ class ParaphraseGPT(nn.Module):
 
     'Takes a batch of sentences and produces embeddings for them.'
     ### YOUR CODE HERE
-    raise NotImplementedError
-
+    last_hidden = self.gpt(input_ids, attention_mask)["last_token"]
+    last_droped = self.paraphrase_dropout(last_hidden)
+    logits = self.paraphrase_detection_head(last_droped)
+    return logits
 
 
 def save_model(model, optimizer, args, filepath):
@@ -151,7 +158,7 @@ def train(args):
 def test(args):
   """Evaluate your model on the dev and test datasets; save the predictions to disk."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-  saved = torch.load(args.filepath)
+  saved = torch.load(args.filepath, weights_only=False)
 
   model = ParaphraseGPT(saved['args'])
   model.load_state_dict(saved['model'])
@@ -203,7 +210,12 @@ def get_args():
   parser.add_argument("--model_size", type=str,
                       help="The model size as specified on hugging face. DO NOT use the xl model.",
                       choices=['gpt2', 'gpt2-medium', 'gpt2-large'], default='gpt2')
+  parser.add_argument("--paraphrase_dropout_prob", type=float, default=0.3)
 
+  parser.add_argument("--fine-tune-mode", type=str,
+                      help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well',
+                      choices=('last-linear-layer', 'full-model'), default="last-linear-layer")
+  
   args = parser.parse_args()
   return args
 
