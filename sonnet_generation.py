@@ -42,7 +42,7 @@ def seed_everything(seed=11711):
 
 
 class SonnetGPT(nn.Module):
-  """Your GPT-2 Model designed for paraphrase detection."""
+  """Your GPT-2 Model designed for sonnet generation."""
 
   def __init__(self, args):
     super().__init__()
@@ -61,8 +61,9 @@ class SonnetGPT(nn.Module):
     not just the distribution over next tokens for the last token!
     """
     ### YOUR CODE HERE
-    raise NotImplementedError
-
+    last_hidden_states = self.gpt(input_ids, attention_mask)["last_hidden_state"]
+    logits = self.gpt.hidden_state_to_token(last_hidden_states)
+    return logits
 
   def get_device(self):
     for param in self.gpt.parameters():
