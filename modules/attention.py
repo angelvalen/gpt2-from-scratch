@@ -35,10 +35,10 @@ class CausalSelfAttention(nn.Module):
 
     ### YOUR CODE HERE
     d_k = self.attention_head_size
-    att_score = torch.matmul(query, key.transpose(-1, -2)) / torch.sqrt(torch.tensor(d_k, dtype=float))
+    att_score = torch.matmul(query, key.transpose(-1, -2)) / torch.sqrt(torch.tensor(d_k, dtype=float, device=key.device))
 
     seq_len = query.shape[-2]
-    causal_mask = - torch.triu(torch.ones(seq_len, seq_len), diagonal=1) * 10000.0
+    causal_mask = - torch.triu(torch.ones(seq_len, seq_len, device=key.device), diagonal=1) * 10000.0 
     att_masked = att_score + causal_mask + attention_mask # Causal and padding mask
 
     att_probs = self.dropout(torch.softmax(att_masked, dim=-1)) # Dropout to probs, as in original GPT2
