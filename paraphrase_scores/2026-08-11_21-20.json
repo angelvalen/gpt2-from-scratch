@@ -1,0 +1,20 @@
+{
+    "accuracy": 0.6750105122560538,
+    "para_train": "data/quora-train.csv",
+    "para_dev": "data/quora-dev.csv",
+    "para_test": "data/quora-test-student.csv",
+    "para_dev_out": "predictions/para-dev-output.csv",
+    "para_test_out": "predictions/para-test-output.csv",
+    "seed": 11711,
+    "epochs": 10,
+    "use_gpu": true,
+    "batch_size": 8,
+    "lr": 1e-05,
+    "model_size": "gpt2",
+    "paraphrase_dropout_prob": 0.1,
+    "fine_tune_mode": "last-linear-layer",
+    "filepath": "10-1e-05-paraphrase.pt",
+    "d": 768,
+    "l": 12,
+    "num_heads": 12
+}

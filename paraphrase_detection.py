@@ -32,6 +32,8 @@ from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
 
+from utils import custom_save
+
 TQDM_DISABLE = False
 
 # Fix the random seed.
@@ -190,6 +192,8 @@ def test(args):
     f.write(f"id \t Predicted_Is_Paraphrase \n")
     for p, s in zip(test_para_sent_ids, test_para_y_pred):
       f.write(f"{p}, {s} \n")
+
+  custom_save(dev_para_acc, args, "paraphrase_scores")
 
 
 def get_args():
