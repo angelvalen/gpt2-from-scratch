@@ -1,0 +1,15 @@
+{
+    "accuracy": 0.878,
+    "filepath": "cfimdb-classifier.pt",
+    "lr": 0.001,
+    "use_gpu": true,
+    "epochs": 10,
+    "batch_size": 8,
+    "hidden_dropout_prob": 0.3,
+    "train": "data/ids-cfimdb-train.csv",
+    "dev": "data/ids-cfimdb-dev.csv",
+    "test": "data/ids-cfimdb-test-student.csv",
+    "fine_tune_mode": "last-linear-layer",
+    "dev_out": "predictions/last-linear-layer-cfimdb-dev-out.csv",
+    "test_out": "predictions/last-linear-layer-cfimdb-test-out.csv"
+}

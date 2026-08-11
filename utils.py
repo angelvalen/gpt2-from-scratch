@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 import fnmatch
+from datetime import datetime
 
 __version__ = "4.0.0"
 _torch_version = importlib_metadata.version("torch")
@@ -358,3 +359,17 @@ def get_extended_attention_mask(attention_mask: Tensor, dtype) -> Tensor:
   extended_attention_mask = extended_attention_mask.to(dtype=dtype)  # fp16 compatibility
   extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
   return extended_attention_mask
+
+
+def custom_save(dev_acc, args, dirname="scores"):
+    """Custom saving function to check accuracy over different configurations."""
+
+    os.makedirs(dirname, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    path = f"{dirname}/{timestamp}.json"
+
+    info = {"accuracy": dev_acc, **vars(args)}
+
+    with open(path, "w") as f:
+        json.dump(info, f, indent=4)
