@@ -27,6 +27,10 @@ from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
 
+from utils import custom_save
+from collections import Counter
+import warnings
+
 TQDM_DISABLE = False
 
 
@@ -70,13 +74,15 @@ class SonnetGPT(nn.Module):
       return param.device
 
   @torch.no_grad()
-  def generate(self, encoding, temperature=0.7, top_p=0.9, max_length=128):
+  def generate_top_p(self, encoding, temperature=0.7, top_p=0.9, max_length=128): 
     """
     Generates an original sonnet using top-p sampling and softmax temperature.
 
     TODO: this is probably not ideal. You can look at hugging face's model.generate(...) function for inspiration.
     In particular, generating multiple sequences and choosing the best with beam search is one avenue. Top_k is another;
     there are many.
+
+    Expects encoding.shape = (batch_size==1, seq_len)
     """
     token_ids = encoding.to(self.get_device())
     attention_mask = torch.ones(token_ids.shape, dtype=torch.int64).to(self.get_device())
@@ -113,9 +119,111 @@ class SonnetGPT(nn.Module):
         [attention_mask, torch.ones((1, 1), dtype=torch.int64).to(self.get_device())], dim=1
       )
 
-    generated_output = self.tokenizer.decode(token_ids[0].cpu().numpy().tolist())[3:]
+    generated_output = self.tokenizer.decode(token_ids[0].cpu().numpy().tolist())
     return token_ids, generated_output
 
+  @torch.no_grad()
+  def generate_beam(self, encoding, num_beams=5, max_length=128, length_penalty=0.6):
+    """
+    Beam search autoregressive generation.
+    Expects encoding.shape = (batch_size==1, seq_len)
+    """
+    beams = encoding.to(self.get_device())
+    is_finished = [False]
+    scores = torch.zeros(num_beams, device=self.get_device())
+    attention_mask = torch.ones(beams.shape, dtype=torch.int64).to(self.get_device())
+    lengths = torch.tensor([encoding.shape[1]], device=self.get_device(), dtype=torch.int64)
+
+    for _ in range(max_length):
+
+      print(f"{_} iter BEAMS:")
+      print()
+      for i in range(beams.shape[0]):
+        decoded = self.tokenizer.decode(beams[i])
+        print("Decoded beam:")
+        print(decoded)
+        print()
+        print("Cumuulative score:")
+        print(score[i])
+        print()
+        print("Length:")
+        print(lengths[i])
+        print()
+        print("Is finished:")
+        print(is_finished[i])
+      
+      # Forward pass to get log probs
+      logits_sequence = self.forward(beams, attention_mask)
+      logits_last_token = logits_sequence[:, -1, :]
+      last_token_log_probs = F.log_softmax(logits_last_token, -1) # (Beams, Vocab)
+
+      # Get top probs for each beam
+      top_probs, top_idx = torch.topk(last_token_log_probs, num_beams, dim=-1) # Both (Beams, Top B tokens)
+
+      # Select top B from B^2 possibilities
+      candidates = []
+      for beam in range(top_probs.shape[0]):
+
+        if is_finished[beam]:  # Directly insert finished beams with dummy next-token-postion
+          cummulative_prob = scores[beam]
+          candidates.append((cummulative_prob, beam, 0))
+          continue
+              
+        for p in range(top_probs.shape[1]): # p keeps track of the place in top_probs, to retrieve top_idx afterwards
+
+          cummulative_prob = scores[beam] + top_probs[beam][p]
+
+          # Keep track of idx from where top_prob was obtained
+          candidates.append((cummulative_prob, beam, p))
+
+      def normalize_lengths(cumm_prob, beam_idx, beams_length, is_finished, length_penalty=length_penalty):
+        # Normalize counting the token we are about to add
+        if is_finished[beam_idx]:
+          next_len = beams_length[beam_idx]
+        else:
+          next_len = beams_length[beam_idx] + 1
+
+        return cumm_prob / next_len ** length_penalty
+      
+      top_b = sorted(candidates, key=lambda x: normalize_lengths(x[0], x[1], lengths, is_finished), reverse=True)[:num_beams]
+
+      new_beams = []
+      new_scores = []
+      for score, beam, p in top_b:
+
+        # Retrieve vocab token from saved idx
+        if is_finished[beam]:
+          token = self.tokenizer.eos_token_id # as padding
+        else:
+          token = top_idx[beam][p].item()
+
+        new_b = beams[beam].tolist() + [token]
+        new_beams.append(new_b)
+        new_scores.append(score)
+
+      # Update current beam search state
+      beams = torch.tensor(new_beams, device=self.get_device())
+      is_finished = [beam[-1].item() == self.tokenizer.eos_token_id for beam in beams]
+      scores = torch.tensor(new_scores, device=self.get_device())
+      attention_mask = torch.ones(beams.shape, dtype=torch.int64).to(self.get_device())
+      lengths = torch.tensor(
+      [(b != self.tokenizer.eos_token_id).sum().item() for b in beams],
+      device=self.get_device(), dtype=torch.int64
+      )
+
+      if all(is_finished):
+        break
+
+    # Finally get best beam 
+    normalized_scores = scores / lengths.float() ** length_penalty
+    best_idx = torch.argmax(normalized_scores)
+    best_beam = beams[best_idx]
+
+    # Remove posible padding
+    best_beam = best_beam[:lengths[best_idx]]
+
+    return best_beam
+        
 
 def save_model(model, optimizer, args, filepath):
   save_info = {
@@ -135,12 +243,13 @@ def train(args):
   """Train GPT-2 for paraphrase detection on the Quora dataset."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
   # Create the data and its corresponding datasets and dataloader.
-  sonnet_dataset = SonnetsDataset(args.sonnet_path)
+  sonnet_dataset = SonnetsDataset(args.sonnet_train)
   sonnet_dataloader = DataLoader(sonnet_dataset, shuffle=True, batch_size=args.batch_size,
                                  collate_fn=sonnet_dataset.collate_fn)
 
   # Create the held-out dataset: these only have the first 3 lines. Your job is to fill in the rest!
-  held_out_sonnet_dataset = SonnetsDataset(args.held_out_sonnet_path)
+  held_out_sonnet_dataset = SonnetsDataset(args.held_out_sonnet_dev)
+  held_out_labels_dataset = SonnetsDataset(args.held_out_sonnet_dev_labels)
 
   args = add_arguments(args)
   model = SonnetGPT(args)
@@ -148,6 +257,7 @@ def train(args):
 
   lr = args.lr
   optimizer = AdamW(model.parameters(), lr=lr)
+  best_chrf = 0
 
   # Run for the specified number of epochs.
   for epoch in range(args.epochs):
@@ -174,69 +284,181 @@ def train(args):
       num_batches += 1
 
     train_loss = train_loss / num_batches
-    print(f"Epoch {epoch}: train loss :: {train_loss :.3f}.")
-    print('Generating several output sonnets...')
-    model.eval()
-    for batch in held_out_sonnet_dataset:
-      encoding = model.tokenizer(batch[1], return_tensors='pt', padding=True, truncation=True).to(device)
-      output = model.generate(encoding['input_ids'], temperature=args.temperature, top_p=args.top_p)
-      print(f'{batch[1]}{output[1]}\n\n')
 
-    # TODO: consider a stopping condition to prevent overfitting on the small dataset of sonnets.
-    save_model(model, optimizer, args, f'{epoch}_{args.filepath}')
+    print("Evaluating on dev held out sonnets") ### EVALUATION CODE IS NOT BATCHED SINCE MODEL.GENERATE() ISNT ORIGINALLY BATCHED
+    model.eval()
+    total_chrf = 0
+    for sonnet_held_out, sonnet_labels in tqdm(zip(held_out_sonnet_dataset, held_out_labels_dataset), total=len(held_out_sonnet_dataset)):
+      encoding = model.tokenizer(sonnet_held_out[1], return_tensors='pt', padding=True, truncation=True).to(device)
+      
+      if args.generation_method == "top_p":
+        output = model.generate_top_p(encoding['input_ids'], temperature=args.temperature, top_p=args.top_p)
+      elif args.generation_method == "beam":
+        output = model.generate_beam(encoding["input_ids"], num_beams=args.num_beams, length_penalty=args.length_penalty)
+      else:
+        raise ValueError(f"Unknown generation method: {args.generation_method}")
+
+      chrf = compute_chrf(sonnet_held_out[1], output[1], sonnet_labels[1])
+      total_chrf += chrf
+
+    total_chrf /= len(held_out_sonnet_dataset)
+
+    print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, dev CHRF :: {total_chrf :.3f}")
+
+    # Stopping condition to prevent overfitting on the small dataset of sonnets.
+    if total_chrf > best_chrf:
+      best_chrf = total_chrf
+      save_model(model, optimizer, args, args.filepath)
 
 
 @torch.no_grad()
-def generate_submission_sonnets(args):
+def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE MODEL.GENERATE() ISNT ORIGINALLY BATCHED
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-  saved = torch.load(f'{args.epochs-1}_{args.filepath}', weights_only=False)
+  saved = torch.load(args.filepath, weights_only=False, map_location=device)
 
   model = SonnetGPT(saved['args'])
   model.load_state_dict(saved['model'])
   model = model.to(device)
   model.eval()
 
-  # Create the held-out dataset: these only have the first 3 lines. Your job is to fill in the rest!
-  held_out_sonnet_dataset = SonnetsDataset(args.held_out_sonnet_path)
+  ## DEV
+  dev_dataset = SonnetsDataset(args.held_out_sonnet_dev)
+  dev_labels_dataset = SonnetsDataset(args.held_out_sonnet_dev_labels)
 
   generated_sonnets = []
-  for batch in held_out_sonnet_dataset:
-    sonnet_id = batch[0]
-    encoding = model.tokenizer(batch[1], return_tensors='pt', padding=False, truncation=True).to(device)
-    output = model.generate(encoding['input_ids'], temperature=args.temperature, top_p=args.top_p)[0][0]
-    decoded_output = model.tokenizer.decode(output)
-    full_sonnet = f'{decoded_output}\n\n'
-    generated_sonnets.append((sonnet_id, full_sonnet))
+  total_chrf = 0
+  print("Generating dev sonnets")
+  for sonnet_held_out, sonnet_labels in tqdm(zip(dev_dataset, dev_labels_dataset), total=len(dev_dataset)):
 
-    print(f'{decoded_output}\n\n')
+    # Sonnet generation
+    sonnet_id = sonnet_held_out[0]
+    encoding = model.tokenizer(sonnet_held_out[1], return_tensors='pt', padding=False, truncation=True).to(device)
 
-  with open(args.sonnet_out, "w+") as f:
+    if args.generation_method == "top_p":
+      output = model.generate_top_p(encoding['input_ids'], temperature=args.temperature, top_p=args.top_p)
+    elif args.generation_method == "beam":
+      output = model.generate_beam(encoding["input_ids"], num_beams=args.num_beams, length_penalty=args.length_penalty)
+    else:
+      raise ValueError(f"Unknown generation method: {args.generation_method}")
+
+
+    chrf = compute_chrf(sonnet_held_out[1], output[1], sonnet_labels[1])
+    total_chrf += chrf
+
+    generated_sonnets.append((sonnet_id, output[1], chrf))
+
+  # Save chrf with this config
+  total_chrf /= len(dev_dataset)
+  print("Dev CHRF: ", total_chrf)
+  custom_save(total_chrf, args, "sonnet_scores")
+
+  # Save dev predictions
+  with open(args.sonnet_dev_out, "w+") as f:
     f.write(f"--Generated Sonnets-- \n\n")
     for sonnet in generated_sonnets:
       f.write(f"\n{sonnet[0]}\n")
       f.write(sonnet[1])
+      f.write(f"\nChrf: {sonnet[2]}\n")
+
+  ## TEST
+  # Create the held-out dataset: these only have the first 3 lines. Your job is to fill in the rest!
+  test_dataset = SonnetsDataset(args.held_out_sonnet_test)
+
+  generated_sonnets = []
+  print("Generating test sonnets...")
+  for batch in tqdm(test_dataset):
+    sonnet_id = batch[0]
+    encoding = model.tokenizer(batch[1], return_tensors='pt', padding=False, truncation=True).to(device)
+
+    if args.generation_method == "top_p":
+      output = model.generate_top_p(encoding['input_ids'], temperature=args.temperature, top_p=args.top_p)
+    elif args.generation_method == "beam":
+      output = model.generate_beam(encoding["input_ids"], num_beams=args.num_beams, length_penalty=args.length_penalty)
+    else:
+      raise ValueError(f"Unknown generation method: {args.generation_method}")
+
+    generated_sonnets.append((sonnet_id, output[1]))
+
+  with open(args.sonnet_test_out, "w+") as f:
+    f.write(f"--Generated Sonnets-- \n\n")
+    for sonnet in generated_sonnets:
+      f.write(f"\n{sonnet[0]}\n")
+      f.write(f"{sonnet[1]}\n")
+
+
+def compute_chrf(held_out_reference, hypothesis, reference, beta=1):
+  """Computes CHRF score (https://aclanthology.org/anthology-files/pdf/W/W15/W15-3049.pdf)
+  for the predicted continuation against a gold reference"""
+
+  # Remove initial reference from chrf score
+  hypothesis = hypothesis[len(held_out_reference):]
+  reference = reference[len(held_out_reference):]
+
+  if not hypothesis:
+    return 0.0
+
+  precision = 0.
+  recall = 0.
+  for n in range(1, 7):
+
+    hyp_n_grams = [hypothesis[i:i+n] for i in range(len(hypothesis) - n + 1)]
+    ref_n_grams = [reference[i:i+n] for i in range(len(reference) - n + 1)]
+
+    if not hyp_n_grams or not ref_n_grams:
+            msg = f"""Couldnt extract {n}-grams for hypothesis: 
+            {hypothesis} 
+            and reference: 
+            {reference}."""
+            warnings.warn(msg)
+            continue
+    
+    hyp_counts = Counter(hyp_n_grams)
+    ref_counts = Counter(ref_n_grams)
+
+    matches = sum(min(hyp_counts[gram], ref_counts[gram]) for gram in hyp_counts)
+    precision += matches / len(hyp_n_grams)
+    recall += matches / len(ref_n_grams)
+
+  # Return 0 if no overlap at all
+  if precision + recall == 0:
+    return 0.0
+
+  precision /= 6
+  recall /= 6
+  chrf = (1 + beta**2) * precision * recall / (beta**2 * precision + recall)
+
+  return chrf
 
 
 def get_args():
   parser = argparse.ArgumentParser()
 
-  parser.add_argument("--sonnet_path", type=str, default="data/sonnets.txt")
-  parser.add_argument("--held_out_sonnet_path", type=str, default="data/sonnets_held_out.txt")
-  parser.add_argument("--sonnet_out", type=str, default="predictions/generated_sonnets.txt")
+  parser.add_argument("--sonnet_train", type=str, default="data/sonnets.txt")
+  parser.add_argument("--held_out_sonnet_dev", type=str, default="data/sonnets_held_out_dev.txt")
+  parser.add_argument("--held_out_sonnet_dev_labels", type=str, default="data/TRUE_sonnets_held_out_dev.txt")
+  parser.add_argument("--held_out_sonnet_test", type=str, default="data/sonnets_held_out.txt")
+  parser.add_argument("--sonnet_dev_out", type=str, default="predictions/generated_sonnets_dev.txt")
+  parser.add_argument("--sonnet_test_out", type=str, default="predictions/generated_sonnets_test.txt")
 
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=10)
   parser.add_argument("--use_gpu", action='store_true')
 
   # Generation parameters.
+  parser.add_argument("--generation_method", type=str, help="Generation method for performing sonnet generation.",
+                      choices=["beam", "top_p"], default="beam")
   parser.add_argument("--temperature", type=float, help="softmax temperature.", default=1.2)
   parser.add_argument("--top_p", type=float, help="Cumulative probability distribution for nucleus sampling.",
                       default=0.9)
+  parser.add_argument("--num_beams", type=int, help="Number of beams for beam search generation.", default=5)
+  parser.add_argument("--length_penalty", type=float, help="Length penalty for beam search scoring.", default=0.6)
 
   parser.add_argument("--batch_size", help='The training batch size.', type=int, default=8)
   parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
   parser.add_argument("--model_size", type=str, help="The model size as specified on hugging face.",
                       choices=['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'], default='gpt2')
+  
+  parser.add_argument("--generate_only", action="store_true", help="If applied, program skips training and loads saved weights.")
 
   args = parser.parse_args()
   return args
@@ -265,5 +487,6 @@ if __name__ == "__main__":
   args = get_args()
   args.filepath = f'{args.epochs}-{args.lr}-sonnet.pt'  # Save path.
   seed_everything(args.seed)  # Fix the seed for reproducibility.
-  train(args)
+  if not args.generate_only:
+    train(args)
   generate_submission_sonnets(args)
