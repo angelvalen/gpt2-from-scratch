@@ -1,0 +1,2 @@
+- Add KV cache when generating
+- More efficient beam_search logic

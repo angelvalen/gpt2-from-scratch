@@ -119,7 +119,8 @@ class SonnetGPT(nn.Module):
         [attention_mask, torch.ones((1, 1), dtype=torch.int64).to(self.get_device())], dim=1
       )
 
-    generated_output = self.tokenizer.decode(token_ids[0].cpu().numpy().tolist())
+    token_ids = token_ids[0] # Remove batch dim (1, seq) -> (seq,)
+    generated_output = self.tokenizer.decode(token_ids.cpu().numpy().tolist())
     return token_ids, generated_output
 
   @torch.no_grad()
@@ -136,21 +137,24 @@ class SonnetGPT(nn.Module):
 
     for _ in range(max_length):
 
-      print(f"{_} iter BEAMS:")
-      print()
-      for i in range(beams.shape[0]):
-        decoded = self.tokenizer.decode(beams[i])
-        print("Decoded beam:")
-        print(decoded)
+      """ Debugging
+      if _ > 100:
+        print("==========================")
+        print(f"{_} iter BEAMS:")
         print()
-        print("Cumuulative score:")
-        print(score[i])
-        print()
-        print("Length:")
-        print(lengths[i])
-        print()
-        print("Is finished:")
-        print(is_finished[i])
+        for i in range(beams.shape[0]):
+          decoded = self.tokenizer.decode(beams[i])
+          print("Decoded beam:")
+          print(decoded)
+          print()
+          print("Cumuulative score:", scores[i])
+          print()
+          print("Length:", lengths[i])
+          print()
+          print("Is finished:", is_finished[i])
+        print("==========================")
+        input("keep debuging")
+        """
       
       # Forward pass to get log probs
       logits_sequence = self.forward(beams, attention_mask)
@@ -222,7 +226,10 @@ class SonnetGPT(nn.Module):
     # Remove posible padding
     best_beam = best_beam[:lengths[best_idx]]
 
-    return best_beam
+    # Decode output
+    generated_output = self.tokenizer.decode(best_beam.cpu().numpy().tolist())
+
+    return best_beam, generated_output
         
 
 def save_model(model, optimizer, args, filepath):
@@ -350,7 +357,7 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
   # Save chrf with this config
   total_chrf /= len(dev_dataset)
   print("Dev CHRF: ", total_chrf)
-  custom_save(total_chrf, args, "sonnet_scores")
+  custom_save(args, "sonnet_scores", chrf=total_chrf)
 
   # Save dev predictions
   with open(args.sonnet_dev_out, "w+") as f:
