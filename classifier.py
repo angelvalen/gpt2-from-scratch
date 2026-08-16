@@ -350,7 +350,7 @@ def test(args):
       for p, s in zip(test_sent_ids, test_pred):
         f.write(f"{p}, {s} \n")
 
-    custom_save(dev_acc, args, "sentiment_scores")
+    custom_save(args, "sentiment_scores", accuracy=dev_acc)
 
 
 

@@ -1,4 +1,3 @@
-# TODO FOR TAs: MODIFY THIS FILE
 
 from typing import Dict, List, Optional, Union, Tuple, BinaryIO
 import os
@@ -361,7 +360,7 @@ def get_extended_attention_mask(attention_mask: Tensor, dtype) -> Tensor:
   return extended_attention_mask
 
 
-def custom_save(dev_acc, args, dirname="scores"):
+def custom_save(args, dirname="scores", **kwargs):
     """Custom saving function to check accuracy over different configurations."""
 
     os.makedirs(dirname, exist_ok=True)
@@ -369,7 +368,7 @@ def custom_save(dev_acc, args, dirname="scores"):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     path = f"{dirname}/{timestamp}.json"
 
-    info = {"accuracy": dev_acc, **vars(args)}
+    info = {**kwargs, **vars(args)}
 
     with open(path, "w") as f:
         json.dump(info, f, indent=4)

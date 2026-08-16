@@ -193,7 +193,7 @@ def test(args):
     for p, s in zip(test_para_sent_ids, test_para_y_pred):
       f.write(f"{p}, {s} \n")
 
-  custom_save(dev_para_acc, args, "paraphrase_scores")
+  custom_save(args, "paraphrase_scores", accuracy=dev_para_acc)
 
 
 def get_args():
