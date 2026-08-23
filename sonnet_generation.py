@@ -27,9 +27,10 @@ from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
 
-from utils import custom_save
+from utils import custom_save, sync_if_cuda
 from collections import Counter
 import warnings
+import time
 
 TQDM_DISABLE = False
 
@@ -267,6 +268,9 @@ def train(args):
   best_chrf = 0
 
   # Run for the specified number of epochs.
+  sync_if_cuda()
+  start = time.time()
+
   for epoch in range(args.epochs):
     model.train()
     train_loss = 0
@@ -317,6 +321,9 @@ def train(args):
       best_chrf = total_chrf
       save_model(model, optimizer, args, args.filepath)
 
+  # Save training time
+  sync_if_cuda()
+  args.train_time = time.time() - start
 
 @torch.no_grad()
 def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE MODEL.GENERATE() ISNT ORIGINALLY BATCHED
@@ -332,8 +339,12 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
   dev_dataset = SonnetsDataset(args.held_out_sonnet_dev)
   dev_labels_dataset = SonnetsDataset(args.held_out_sonnet_dev_labels)
 
-  generated_sonnets = []
+  dev_sonnets = []
   total_chrf = 0
+
+  sync_if_cuda()
+  start = time.time()
+
   print("Generating dev sonnets")
   for sonnet_held_out, sonnet_labels in tqdm(zip(dev_dataset, dev_labels_dataset), total=len(dev_dataset)):
 
@@ -352,26 +363,17 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
     chrf = compute_chrf(sonnet_held_out[1], output[1], sonnet_labels[1])
     total_chrf += chrf
 
-    generated_sonnets.append((sonnet_id, output[1], chrf))
+    dev_sonnets.append((sonnet_id, output[1], chrf))
 
-  # Save chrf with this config
   total_chrf /= len(dev_dataset)
   print("Dev CHRF: ", total_chrf)
-  custom_save(args, "sonnet_scores", chrf=total_chrf)
 
-  # Save dev predictions
-  with open(args.sonnet_dev_out, "w+") as f:
-    f.write(f"--Generated Sonnets-- \n\n")
-    for sonnet in generated_sonnets:
-      f.write(f"\n{sonnet[0]}\n")
-      f.write(sonnet[1])
-      f.write(f"\nChrf: {sonnet[2]}\n")
 
   ## TEST
   # Create the held-out dataset: these only have the first 3 lines. Your job is to fill in the rest!
   test_dataset = SonnetsDataset(args.held_out_sonnet_test)
 
-  generated_sonnets = []
+  test_sonnets = []
   print("Generating test sonnets...")
   for batch in tqdm(test_dataset):
     sonnet_id = batch[0]
@@ -384,14 +386,29 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
     else:
       raise ValueError(f"Unknown generation method: {args.generation_method}")
 
-    generated_sonnets.append((sonnet_id, output[1]))
+    test_sonnets.append((sonnet_id, output[1]))
 
+  sync_if_cuda()
+  args.evaluation_time = time.time() - start
+
+  ### Saving
+
+  # Save dev predictions
+  with open(args.sonnet_dev_out, "w+") as f:
+    f.write(f"--Generated Sonnets-- \n\n")
+    for sonnet in dev_sonnets:
+      f.write(f"\n{sonnet[0]}\n")
+      f.write(sonnet[1])
+      f.write(f"\nChrf: {sonnet[2]}\n")
+
+  # Save test predictions
   with open(args.sonnet_test_out, "w+") as f:
     f.write(f"--Generated Sonnets-- \n\n")
-    for sonnet in generated_sonnets:
+    for sonnet in test_sonnets:
       f.write(f"\n{sonnet[0]}\n")
       f.write(f"{sonnet[1]}\n")
 
+  custom_save(args, "sonnet_scores", chrf=total_chrf)
 
 def compute_chrf(held_out_reference, hypothesis, reference, beta=1):
   """Computes CHRF score (https://aclanthology.org/anthology-files/pdf/W/W15/W15-3049.pdf)
@@ -453,7 +470,7 @@ def get_args():
 
   # Generation parameters.
   parser.add_argument("--generation_method", type=str, help="Generation method for performing sonnet generation.",
-                      choices=["beam", "top_p"], default="beam")
+                      choices=["beam", "top_p"], default="top_p")
   parser.add_argument("--temperature", type=float, help="softmax temperature.", default=1.2)
   parser.add_argument("--top_p", type=float, help="Cumulative probability distribution for nucleus sampling.",
                       default=0.9)

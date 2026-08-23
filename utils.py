@@ -37,6 +37,9 @@ WEIGHTS_NAME = "pytorch_model.bin"
 CONFIG_NAME = "config.json"
 
 
+def sync_if_cuda():
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
 
 def model_size_to_params(model_size):
   if model_size == 'gpt2':

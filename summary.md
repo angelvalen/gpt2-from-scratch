@@ -1,6 +1,6 @@
-By default, `classifier.py` will write your model predictions into this folder.
-Before running `prepare_submit.py`, make sure that this directory has been populated!
 
+
+# Sentiment Analysis
 
 Expected from instructions:
 Last Linear Layer for SST: Dev Accuracy: 0.462
@@ -13,3 +13,13 @@ Last Linear Layer for SST: Dev Accuracy: 0.453
 Full Model for SST: Dev Accuracy: 0.506
 Last Linear Layer for CFIMDB: Dev Accuracy: 0.878
 Full Model for CFIMDB: Dev Accuracy: 0.979
+
+# Paraphrase Detection
+
+Acc: 0.675
+
+# Sonnet Generation
+
+Chrf
+Top p sampling: 0.309
+Beam search: 0.167

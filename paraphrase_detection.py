@@ -32,7 +32,8 @@ from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
 
-from utils import custom_save
+from utils import custom_save, sync_if_cuda
+import time
 
 TQDM_DISABLE = False
 
@@ -123,6 +124,9 @@ def train(args):
   best_dev_acc = 0
 
   # Run for the specified number of epochs.
+  sync_if_cuda()
+  start = time.time()
+
   for epoch in range(args.epochs):
     model.train()
     train_loss = 0
@@ -155,6 +159,10 @@ def train(args):
 
     print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, dev acc :: {dev_acc :.3f}")
 
+  # Save total training time
+  sync_if_cuda()
+  args.train_time = time.time() - start
+
 
 @torch.no_grad()
 def test(args):
@@ -178,10 +186,16 @@ def test(args):
                                    collate_fn=para_dev_data.collate_fn)
   para_test_dataloader = DataLoader(para_test_data, shuffle=True, batch_size=args.batch_size,
                                     collate_fn=para_test_data.collate_fn)
+  
+  sync_if_cuda()
+  start = time.time()
 
   dev_para_acc, _, dev_para_y_pred, _, dev_para_sent_ids = model_eval_paraphrase(para_dev_dataloader, model, device)
   print(f"dev paraphrase acc :: {dev_para_acc :.3f}")
   test_para_y_pred, test_para_sent_ids = model_test_paraphrase(para_test_dataloader, model, device)
+
+  sync_if_cuda()
+  args.evaluation_time = time.time() - start
 
   with open(args.para_dev_out, "w+") as f:
     f.write(f"id \t Predicted_Is_Paraphrase \n")

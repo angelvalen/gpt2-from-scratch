@@ -18,7 +18,8 @@ from models.gpt2 import GPT2Model
 from optimizer import AdamW
 from tqdm import tqdm
 
-from utils import custom_save
+from utils import custom_save, sync_if_cuda
+import time
 
 TQDM_DISABLE = False
 
@@ -279,6 +280,9 @@ def train(args):
   best_dev_acc = 0
 
   # Run for the specified number of epochs.
+  sync_if_cuda()
+  start = time.time()
+
   for epoch in range(args.epochs):
     model.train()
     train_loss = 0
@@ -312,6 +316,10 @@ def train(args):
 
     print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
 
+  # Save training time
+  sync_if_cuda()
+  args.train_time = time.time() - start
+
 
 def test(args):
   with torch.no_grad():
@@ -333,11 +341,17 @@ def test(args):
     test_dataloader = DataLoader(test_dataset, shuffle=False, batch_size=args.batch_size,
                                  collate_fn=test_dataset.collate_fn)
 
+    sync_if_cuda()
+    start = time.time()
+
     dev_acc, dev_f1, dev_pred, dev_true, dev_sents, dev_sent_ids = model_eval(dev_dataloader, model, device)
     print('DONE DEV')
 
     test_pred, test_sents, test_sent_ids = model_test_eval(test_dataloader, model, device)
     print('DONE Test')
+
+    sync_if_cuda()
+    args.evaluation_time = time.time() - start
 
     with open(args.dev_out, "w+") as f:
       print(f"dev acc :: {dev_acc :.3f}")
