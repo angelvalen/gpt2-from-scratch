@@ -37,8 +37,9 @@ class CausalSelfAttention(nn.Module):
     d_k = self.attention_head_size
     att_score = torch.matmul(query, key.transpose(-1, -2)) / torch.sqrt(torch.tensor(d_k, dtype=float, device=key.device))
 
-    seq_len = query.shape[-2]
-    causal_mask = - torch.triu(torch.ones(seq_len, seq_len, device=key.device), diagonal=1) * 10000.0 
+    q_len = query.shape[-2]
+    k_len = key.shape[-2]
+    causal_mask = - torch.triu(torch.ones(q_len, k_len, device=key.device), diagonal=k_len - q_len + 1) * 10000.0 
     att_masked = att_score + causal_mask + attention_mask # Causal and padding mask
 
     att_probs = self.dropout(torch.softmax(att_masked, dim=-1)) # Dropout to probs, as in original GPT2
@@ -46,19 +47,41 @@ class CausalSelfAttention(nn.Module):
     output_concat = rearrange(output, 'b h t d -> b t (h d)')
     return output_concat
 
-  def forward(self, hidden_states, attention_mask):
+  def forward(self, hidden_states, attention_mask, layer_kv_cache=None):
     """
-    hidden_states: [bs, seq_len, hidden_state]
+    hidden_states: [bs, seq_len, hidden_state] ([bs, 1, hidden] if kv cache is given)
     attention_mask: [bs, 1, 1, seq_len]
-    output: [bs, seq_len, hidden_state]
+    output: [bs, seq_len, hidden_state] ([bs, 1, hidden] if kv cache is given)
     """
     # First, we have to generate the key, value, query for each token for multi-head attention
     # using self.transform (more details inside the function).
     # Size of *_layer is [bs, num_attention_heads, seq_len, attention_head_size].
-    key_layer = self.transform(hidden_states, self.key)
-    value_layer = self.transform(hidden_states, self.value)
-    query_layer = self.transform(hidden_states, self.query)
+    if layer_kv_cache is None:
+      key_layer = self.transform(hidden_states, self.key)
+      value_layer = self.transform(hidden_states, self.value)
+      query_layer = self.transform(hidden_states, self.query)
+      
+      # Calculate the multi-head attention.
+      output = self.attention(key_layer, query_layer, value_layer, attention_mask)
+
+      new_layer_kv_cache = (key_layer, value_layer)
+
+      return output, new_layer_kv_cache
     
-    # Calculate the multi-head attention.
-    attn_value = self.attention(key_layer, query_layer, value_layer, attention_mask)
-    return attn_value
+    else:
+      cached_keys = layer_kv_cache[0] # [bs, h, seq_len - 1, d/h]
+      last_key = self.transform(hidden_states, self.key) # [bs, h, 1, d/h]
+      keys = torch.cat((cached_keys, last_key), dim=-2)
+
+      cached_values = layer_kv_cache[1] # [bs, h, seq_len - 1, d/h]
+      last_value = self.transform(hidden_states, self.value) # [bs, h, 1, d/h]
+      values = torch.cat((cached_values, last_value), dim=-2)
+
+      last_query = self.transform(hidden_states, self.query)
+
+      output = self.attention(keys, last_query, values, attention_mask) 
+      # [bs, 1, d], so now seq_len = 1, but generation() code will take the last token anyway, so previous arent needed
+
+      new_layer_kv_cache = (keys, values)
+
+      return output, new_layer_kv_cache

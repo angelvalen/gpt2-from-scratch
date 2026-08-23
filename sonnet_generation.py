@@ -59,16 +59,19 @@ class SonnetGPT(nn.Module):
     for param in self.gpt.parameters():
       param.requires_grad = True
 
-  def forward(self, input_ids, attention_mask):
+  def forward(self, input_ids, attention_mask, kv_cache=None):
     """
     This is similar to the forward for ParaphraseGPT, but we now want to produce a logit for each token in our sequence;
     not just the last token! This will allow our model to learn the natural language distribution that composes sonnets,
     not just the distribution over next tokens for the last token!
     """
     ### YOUR CODE HERE
-    last_hidden_states = self.gpt(input_ids, attention_mask)["last_hidden_state"]
+    output = self.gpt(input_ids, attention_mask, kv_cache)
+    last_hidden_states = output["last_hidden_state"]
     logits = self.gpt.hidden_state_to_token(last_hidden_states)
-    return logits
+
+    kv_cache = output["kv_cache"]
+    return logits, kv_cache
 
   def get_device(self):
     for param in self.gpt.parameters():
@@ -88,10 +91,11 @@ class SonnetGPT(nn.Module):
     token_ids = encoding.to(self.get_device())
     attention_mask = torch.ones(token_ids.shape, dtype=torch.int64).to(self.get_device())
 
+    kv_cache = None
 
     for _ in range(max_length):
       # Forward pass to get logits
-      logits_sequence = self.forward(token_ids, attention_mask)
+      logits_sequence, kv_cache = self.forward(token_ids, attention_mask, kv_cache)
       logits_last_token = logits_sequence[:, -1, :] / temperature  # Apply temperature scaling
 
       # Convert logits to probabilities
@@ -284,7 +288,7 @@ def train(args):
 
       # Compute the loss, gradients, and update the model's parameters.
       optimizer.zero_grad()
-      logits = model(b_ids, b_mask)
+      logits, _ = model(b_ids, b_mask)
       logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
       labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
       loss = F.cross_entropy(logits, labels, reduction='mean')

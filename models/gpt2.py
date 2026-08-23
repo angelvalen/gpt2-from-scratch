@@ -43,26 +43,32 @@ class GPT2Model(GPTPreTrainedModel):
 
     self.init_weights()
 
-  def embed(self, input_ids):
+  def embed(self, input_ids, is_kv_cached=False):
+    """
+    If is_kv_cached, it will just process the necessary last token, while keeping postional encoding information.
+    embed_output: [bs, seq_len or 1 depending on kv cache, hidden_size]
+    """
     input_shape = input_ids.size()
     seq_length = input_shape[1]
-
-    inputs_embeds = None
-    pos_ids = self.position_ids[:, :seq_length]
-    pos_embeds = None
 
     ### TODO: Use pos_ids to get position embedding from self.pos_embedding into pos_embeds.
     ###       Then, add two embeddings together; then apply dropout and return.
     ### YOUR CODE HERE
+    if is_kv_cached:
+      pos_ids = self.position_ids[:, seq_length - 1:seq_length]
+      input_ids = input_ids[:, -1:]
 
+    else:
+      pos_ids = self.position_ids[:, :seq_length]
+    
     pos_embeds = self.pos_embedding(pos_ids) # Shape (1, seq_length, hidden_size)
     input_embeds = self.word_embedding(input_ids) # Shape (batch, seq_lenght, hidden_size)
     embed_output = self.embed_dropout(pos_embeds + input_embeds)
+
     return embed_output
-    
 
 
-  def encode(self, hidden_states, attention_mask):
+  def encode(self, hidden_states, attention_mask, kv_cache=None):
     """
     hidden_states: the output from the embedding layer [batch_size, seq_len, hidden_size]
     attention_mask: [batch_size, seq_len]
@@ -74,29 +80,37 @@ class GPT2Model(GPTPreTrainedModel):
     extended_attention_mask: torch.Tensor = get_extended_attention_mask(attention_mask, self.dtype)
 
     # Pass the hidden states through the encoder layers.
+    new_kv_cache = []
     for i, layer_module in enumerate(self.gpt_layers):
       # Feed the encoding from the last bert_layer to the next.
-      hidden_states = layer_module(hidden_states, extended_attention_mask)
+      layer_kv_cache = None if kv_cache is None else kv_cache[i]
+      hidden_states, layer_kv_cache = layer_module(hidden_states, extended_attention_mask, layer_kv_cache)
+      new_kv_cache.append(layer_kv_cache)
 
-    return hidden_states
+    return hidden_states, new_kv_cache
 
-  def forward(self, input_ids, attention_mask):
+  def forward(self, input_ids, attention_mask, kv_cache=None):
     """
     input_ids: [batch_size, seq_len], seq_len is the max length of the batch
     attention_mask: same size as input_ids, 1 represents non-padding tokens, 0 represents padding tokens
     """
     # Get the embedding for each input token.
-    embedding_output = self.embed(input_ids=input_ids)
+    is_kv_cached = False if kv_cache is None else True
+    embedding_output = self.embed(input_ids, is_kv_cached)
 
     # Feed to a transformer (a stack of GPTLayers).
-    sequence_output = self.encode(embedding_output, attention_mask=attention_mask)
+    sequence_output, kv_cache = self.encode(embedding_output, attention_mask, kv_cache)
     sequence_output = self.final_layer_norm(sequence_output)
 
     # Get the hidden state of the final token.
-    last_non_pad_idx = attention_mask.sum(dim=1) - 1  # Subtract 1 to get last index
-    last_token = sequence_output[torch.arange(sequence_output.shape[0]), last_non_pad_idx]
+    if is_kv_cached:
+      last_token = sequence_output[:, -1]
+    else:
+      last_non_pad_idx = attention_mask.sum(dim=1) - 1  # Subtract 1 to get last index
+      last_token = sequence_output[torch.arange(sequence_output.shape[0]), last_non_pad_idx]
 
-    return {'last_hidden_state': sequence_output, 'last_token': last_token}
+    return {'last_hidden_state': sequence_output, 'last_token': last_token, 'kv_cache': kv_cache }
+
 
   def hidden_state_to_token(self, hidden_state):
     """
