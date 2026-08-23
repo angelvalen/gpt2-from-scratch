@@ -23,3 +23,11 @@ Acc: 0.675
 Chrf
 Top p sampling: 0.309
 Beam search: 0.167
+
+Evaluation time before KV cache
+top p: 40 s
+beam: 141 s
+After
+top p: 35 s
+beam: 47 s
+Huge improvement !

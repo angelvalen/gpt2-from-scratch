@@ -136,9 +136,10 @@ class SonnetGPT(nn.Module):
     """
     beams = encoding.to(self.get_device())
     is_finished = [False]
-    scores = torch.zeros(num_beams, device=self.get_device())
+    scores = torch.zeros(1, device=self.get_device())
     attention_mask = torch.ones(beams.shape, dtype=torch.int64).to(self.get_device())
     lengths = torch.tensor([encoding.shape[1]], device=self.get_device(), dtype=torch.int64)
+    kv_cache = None
 
     for _ in range(max_length):
 
@@ -162,7 +163,7 @@ class SonnetGPT(nn.Module):
         """
       
       # Forward pass to get log probs
-      logits_sequence = self.forward(beams, attention_mask)
+      logits_sequence, kv_cache = self.forward(beams, attention_mask, kv_cache)
       logits_last_token = logits_sequence[:, -1, :]
       last_token_log_probs = F.log_softmax(logits_last_token, -1) # (Beams, Vocab)
 
@@ -210,14 +211,18 @@ class SonnetGPT(nn.Module):
         new_beams.append(new_b)
         new_scores.append(score)
 
+      # Order kv cache to match new beams position
+      beams_ids = torch.tensor([b for _, b, _ in top_b], device=self.get_device())
+      kv_cache = [(keys[beams_ids], values[beams_ids]) for (keys, values) in kv_cache]
+
       # Update current beam search state
       beams = torch.tensor(new_beams, device=self.get_device())
       is_finished = [beam[-1].item() == self.tokenizer.eos_token_id for beam in beams]
       scores = torch.tensor(new_scores, device=self.get_device())
       attention_mask = torch.ones(beams.shape, dtype=torch.int64).to(self.get_device())
       lengths = torch.tensor(
-      [(b != self.tokenizer.eos_token_id).sum().item() for b in beams],
-      device=self.get_device(), dtype=torch.int64
+        [(b != self.tokenizer.eos_token_id).sum().item() for b in beams],
+        device=self.get_device(), dtype=torch.int64
       )
 
       if all(is_finished):
