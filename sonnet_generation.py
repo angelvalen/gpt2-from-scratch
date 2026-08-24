@@ -275,6 +275,8 @@ def train(args):
   lr = args.lr
   optimizer = AdamW(model.parameters(), lr=lr)
   best_chrf = 0
+  args.best_epoch = 0
+  epochs_without_improvement = 0
 
   # Run for the specified number of epochs.
   sync_if_cuda()
@@ -325,10 +327,20 @@ def train(args):
 
     print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, dev CHRF :: {total_chrf :.3f}")
 
-    # Stopping condition to prevent overfitting on the small dataset of sonnets.
+    ## Early stopping
     if total_chrf > best_chrf:
       best_chrf = total_chrf
+      args.best_epoch = epoch
       save_model(model, optimizer, args, args.filepath)
+      epochs_without_improvement = 0 
+
+    else:
+      epochs_without_improvement += 1
+
+    if epochs_without_improvement >= args.patience:
+      print(f"Early stopping at epoch {epoch}")
+      print(f"Best epoch was {args.best_epoch}")
+      break
 
   # Save training time
   sync_if_cuda()
@@ -475,6 +487,7 @@ def get_args():
 
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=10)
+  parser.add_argument("--patience", type=int, default=5)
   parser.add_argument("--use_gpu", action='store_true')
 
   # Generation parameters.

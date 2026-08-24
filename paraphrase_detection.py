@@ -122,6 +122,8 @@ def train(args):
   lr = args.lr
   optimizer = AdamW(model.parameters(), lr=lr, weight_decay=0.)
   best_dev_acc = 0
+  args.best_epoch = 0
+  epochs_without_improvement = 0
 
   # Run for the specified number of epochs.
   sync_if_cuda()
@@ -152,10 +154,21 @@ def train(args):
     train_loss = train_loss / num_batches
 
     dev_acc, dev_f1, *_ = model_eval_paraphrase(para_dev_dataloader, model, device)
-
+    
+    ## Early stopping 
     if dev_acc > best_dev_acc:
       best_dev_acc = dev_acc
+      args.best_epoch = epoch
       save_model(model, optimizer, args, args.filepath)
+      epochs_without_improvement = 0 
+
+    else:
+      epochs_without_improvement += 1
+
+    if epochs_without_improvement >= args.patience:
+      print(f"Early stopping at epoch {epoch}")
+      print(f"Best epoch was {args.best_epoch}")
+      break
 
     print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, dev acc :: {dev_acc :.3f}")
 
@@ -221,6 +234,7 @@ def get_args():
 
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=10)
+  parser.add_argument("--patience", type=int, default=5)
   parser.add_argument("--use_gpu", action='store_true')
 
   parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)

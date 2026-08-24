@@ -278,6 +278,8 @@ def train(args):
   lr = args.lr
   optimizer = AdamW(model.parameters(), lr=lr)
   best_dev_acc = 0
+  args.best_epoch = 0
+  epochs_without_improvement = 0
 
   # Run for the specified number of epochs.
   sync_if_cuda()
@@ -310,9 +312,21 @@ def train(args):
     train_acc, train_f1, *_ = model_eval(train_dataloader, model, device)
     dev_acc, dev_f1, *_ = model_eval(dev_dataloader, model, device)
 
+
+    ## Early stopping 
     if dev_acc > best_dev_acc:
       best_dev_acc = dev_acc
+      args.best_epoch = epoch
       save_model(model, optimizer, args, config, args.filepath)
+      epochs_without_improvement = 0 
+
+    else:
+      epochs_without_improvement += 1
+
+    if epochs_without_improvement >= args.patience:
+      print(f"Early stopping at epoch {epoch}")
+      print(f"Best epoch was {args.best_epoch}")
+      break
 
     print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
 
@@ -372,17 +386,40 @@ def get_args():
   parser = argparse.ArgumentParser()
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=10)
+  parser.add_argument("--patience", type=int, default=5)
   parser.add_argument("--fine-tune-mode", type=str,
                       help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well',
                       choices=('last-linear-layer', 'full-model'), default="last-linear-layer")
   parser.add_argument("--use_gpu", action='store_true')
 
   parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
-  parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
+  parser.add_argument("--hidden_dropout_prob", type=float, default=0.1)
   parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
                       default=1e-3)
+  parser.add_argument("--model_size", type=str,
+                      help="The model size as specified on hugging face. DO NOT use the xl model.",
+                      choices=['gpt2', 'gpt2-medium', 'gpt2-large'], default='gpt2')
 
   args = parser.parse_args()
+  return args
+
+
+def add_arguments(args):
+  """Add arguments that are deterministic on model size."""
+  if args.model_size == 'gpt2':
+    args.d = 768
+    args.l = 12
+    args.num_heads = 12
+  elif args.model_size == 'gpt2-medium':
+    args.d = 1024
+    args.l = 24
+    args.num_heads = 16
+  elif args.model_size == 'gpt2-large':
+    args.d = 1280
+    args.l = 36
+    args.num_heads = 20
+  else:
+    raise Exception(f'{args.model_size} is not supported.')
   return args
 
 
@@ -393,6 +430,7 @@ if __name__ == "__main__":
   print('Training Sentiment Classifier on SST...')
   config = SimpleNamespace(
     filepath='sst-classifier.pt',
+    model_size=args.model_size,
     lr=args.lr,
     use_gpu=args.use_gpu,
     epochs=args.epochs,
@@ -406,6 +444,7 @@ if __name__ == "__main__":
     test_out='predictions/' + args.fine_tune_mode + '-sst-test-out.csv'
   )
 
+  add_arguments(config)
   train(config)
 
   print('Evaluating on SST...')
@@ -417,7 +456,7 @@ if __name__ == "__main__":
     lr=args.lr,
     use_gpu=args.use_gpu,
     epochs=args.epochs,
-    batch_size=8,
+    batch_size=args.batch_size,
     hidden_dropout_prob=args.hidden_dropout_prob,
     train='data/ids-cfimdb-train.csv',
     dev='data/ids-cfimdb-dev.csv',
