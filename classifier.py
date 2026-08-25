@@ -18,8 +18,12 @@ from models.gpt2 import GPT2Model
 from optimizer import AdamW
 from tqdm import tqdm
 
-from utils import custom_save, sync_if_cuda
+from utils import sync_if_cuda
 import time
+from datetime import datetime
+import json
+from pathlib import Path
+import copy
 
 TQDM_DISABLE = False
 
@@ -235,6 +239,9 @@ def model_test_eval(dataloader, model, device):
 
 
 def save_model(model, optimizer, args, config, filepath):
+
+  Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+  
   save_info = {
     'model': model.state_dict(),
     'optim': optimizer.state_dict(),
@@ -266,7 +273,7 @@ def train(args):
   # Init model.
   config = {'hidden_dropout_prob': args.hidden_dropout_prob,
             'num_labels': num_labels,
-            'hidden_size': 768,
+            'hidden_size': args.d,
             'data_dir': '.',
             'fine_tune_mode': args.fine_tune_mode}
 
@@ -367,6 +374,11 @@ def test(args):
     sync_if_cuda()
     args.evaluation_time = time.time() - start
 
+
+    ## Saving
+    for path in [args.dev_out, args.test_out, args.summary_path]:
+      Path(path).parent.mkdir(parents=True, exist_ok=True)
+
     with open(args.dev_out, "w+") as f:
       print(f"dev acc :: {dev_acc :.3f}")
       f.write(f"id \t Predicted_Sentiment \n")
@@ -378,24 +390,26 @@ def test(args):
       for p, s in zip(test_sent_ids, test_pred):
         f.write(f"{p}, {s} \n")
 
-    custom_save(args, "sentiment_scores", accuracy=dev_acc)
-
+    with open(args.summary_path, "w") as f:
+      data = {"dev_accuracy": dev_acc, **vars(args)}
+      json.dump(data, f, indent=2)
 
 
 def get_args():
   parser = argparse.ArgumentParser()
   parser.add_argument("--seed", type=int, default=11711)
-  parser.add_argument("--epochs", type=int, default=10)
+  parser.add_argument("--epochs", type=int, default=50)
   parser.add_argument("--patience", type=int, default=5)
   parser.add_argument("--fine-tune-mode", type=str,
                       help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well',
                       choices=('last-linear-layer', 'full-model'), default="last-linear-layer")
   parser.add_argument("--use_gpu", action='store_true')
 
-  parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
+  parser.add_argument("--sst_batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=64)
+  parser.add_argument("--cfimdb_batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
   parser.add_argument("--hidden_dropout_prob", type=float, default=0.1)
   parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
-                      default=1e-3)
+                      default=1e-5)
   parser.add_argument("--model_size", type=str,
                       help="The model size as specified on hugging face. DO NOT use the xl model.",
                       choices=['gpt2', 'gpt2-medium', 'gpt2-large'], default='gpt2')
@@ -426,47 +440,41 @@ def add_arguments(args):
 if __name__ == "__main__":
   args = get_args()
   seed_everything(args.seed)
+  add_arguments(args)
+
+  ### SST
+
+  sst_args = copy.copy(args)
+  sst_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+  sst_args.filepath=f'checkpoints/{args.model_size}-sst-classifier.pt'
+  sst_args.train='data/ids-sst-train.csv'
+  sst_args.dev='data/ids-sst-dev.csv'
+  sst_args.test='data/ids-sst-test-student.csv'
+  sst_args.dev_out=f"sentiment_results/{sst_timestamp}/sst_dev_out.csv"
+  sst_args.test_out=f"sentiment_results/{sst_timestamp}/sst_test_out.csv"
+  sst_args.summary_path=f"sentiment_results/{sst_timestamp}/sst_summary.json"
+  sst_args.batch_size = args.sst_batch_size
 
   print('Training Sentiment Classifier on SST...')
-  config = SimpleNamespace(
-    filepath='sst-classifier.pt',
-    model_size=args.model_size,
-    lr=args.lr,
-    use_gpu=args.use_gpu,
-    epochs=args.epochs,
-    batch_size=args.batch_size,
-    hidden_dropout_prob=args.hidden_dropout_prob,
-    train='data/ids-sst-train.csv',
-    dev='data/ids-sst-dev.csv',
-    test='data/ids-sst-test-student.csv',
-    fine_tune_mode=args.fine_tune_mode,
-    dev_out='predictions/' + args.fine_tune_mode + '-sst-dev-out.csv',
-    test_out='predictions/' + args.fine_tune_mode + '-sst-test-out.csv'
-  )
-
-  add_arguments(config)
-  train(config)
+  train(sst_args)
 
   print('Evaluating on SST...')
-  test(config)
+  test(sst_args)
+
+  ### CFIMDB
+  cfimdb_args = copy.copy(args)
+  cfimdb_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+  cfimdb_args.filepath=f'checkpoints/{args.model_size}-cfimdb-classifier.pt'
+  cfimdb_args.train='data/ids-cfimdb-train.csv'
+  cfimdb_args.dev='data/ids-cfimdb-dev.csv'
+  cfimdb_args.test='data/ids-cfimdb-test-student.csv'
+  cfimdb_args.dev_out=f"sentiment_results/{cfimdb_timestamp}/cfimdb_dev_out.csv"
+  cfimdb_args.test_out=f"sentiment_results/{cfimdb_timestamp}/cfimdb_test_out.csv"
+  cfimdb_args.summary_path=f"sentiment_results/{cfimdb_timestamp}/cfimdb_summary.json"
+  cfimdb_args.batch_size = args.cfimdb_batch_size
 
   print('Training Sentiment Classifier on cfimdb...')
-  config = SimpleNamespace(
-    filepath='cfimdb-classifier.pt',
-    lr=args.lr,
-    use_gpu=args.use_gpu,
-    epochs=args.epochs,
-    batch_size=args.batch_size,
-    hidden_dropout_prob=args.hidden_dropout_prob,
-    train='data/ids-cfimdb-train.csv',
-    dev='data/ids-cfimdb-dev.csv',
-    test='data/ids-cfimdb-test-student.csv',
-    fine_tune_mode=args.fine_tune_mode,
-    dev_out='predictions/' + args.fine_tune_mode + '-cfimdb-dev-out.csv',
-    test_out='predictions/' + args.fine_tune_mode + '-cfimdb-test-out.csv'
-  )
-
-  train(config)
+  train(cfimdb_args)
 
   print('Evaluating on cfimdb...')
-  test(config)
+  test(cfimdb_args)

@@ -27,10 +27,13 @@ from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
 
-from utils import custom_save, sync_if_cuda
+from utils import sync_if_cuda
 from collections import Counter
 import warnings
 import time
+from datetime import datetime
+import json
+from pathlib import Path
 
 TQDM_DISABLE = False
 
@@ -243,6 +246,9 @@ class SonnetGPT(nn.Module):
         
 
 def save_model(model, optimizer, args, filepath):
+
+  Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+  
   save_info = {
     'model': model.state_dict(),
     'optim': optimizer.state_dict(),
@@ -413,6 +419,8 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
   args.evaluation_time = time.time() - start
 
   ### Saving
+  for path in [args.sonnet_dev_out, args.sonnet_test_out, args.summary_path]:
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
 
   # Save dev predictions
   with open(args.sonnet_dev_out, "w+") as f:
@@ -429,7 +437,9 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
       f.write(f"\n{sonnet[0]}\n")
       f.write(f"{sonnet[1]}\n")
 
-  custom_save(args, "sonnet_scores", chrf=total_chrf)
+  with open(args.summary_path, "w") as f:
+    data = {"dev_chrf": total_chrf, **vars(args)}
+    json.dump(data, f, indent=2)
 
 def compute_chrf(held_out_reference, hypothesis, reference, beta=1):
   """Computes CHRF score (https://aclanthology.org/anthology-files/pdf/W/W15/W15-3049.pdf)
@@ -478,22 +488,25 @@ def compute_chrf(held_out_reference, hypothesis, reference, beta=1):
 def get_args():
   parser = argparse.ArgumentParser()
 
+  timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+
   parser.add_argument("--sonnet_train", type=str, default="data/sonnets.txt")
   parser.add_argument("--held_out_sonnet_dev", type=str, default="data/sonnets_held_out_dev.txt")
   parser.add_argument("--held_out_sonnet_dev_labels", type=str, default="data/TRUE_sonnets_held_out_dev.txt")
   parser.add_argument("--held_out_sonnet_test", type=str, default="data/sonnets_held_out.txt")
-  parser.add_argument("--sonnet_dev_out", type=str, default="predictions/generated_sonnets_dev.txt")
-  parser.add_argument("--sonnet_test_out", type=str, default="predictions/generated_sonnets_test.txt")
+  parser.add_argument("--sonnet_dev_out", type=str, default=f"sonnet_results/{timestamp}/generated_sonnets_dev.txt")
+  parser.add_argument("--sonnet_test_out", type=str, default=f"sonnet_results/{timestamp}/generated_sonnets_test.txt")
+  parser.add_argument("--summary_path", type=str, default=f"sonnet_results/{timestamp}/summary.json")
 
   parser.add_argument("--seed", type=int, default=11711)
-  parser.add_argument("--epochs", type=int, default=10)
+  parser.add_argument("--epochs", type=int, default=50)
   parser.add_argument("--patience", type=int, default=5)
   parser.add_argument("--use_gpu", action='store_true')
 
   # Generation parameters.
   parser.add_argument("--generation_method", type=str, help="Generation method for performing sonnet generation.",
                       choices=["beam", "top_p"], default="top_p")
-  parser.add_argument("--temperature", type=float, help="softmax temperature.", default=1.2)
+  parser.add_argument("--temperature", type=float, help="softmax temperature.", default=0.9)
   parser.add_argument("--top_p", type=float, help="Cumulative probability distribution for nucleus sampling.",
                       default=0.9)
   parser.add_argument("--num_beams", type=int, help="Number of beams for beam search generation.", default=5)
@@ -531,7 +544,7 @@ def add_arguments(args):
 
 if __name__ == "__main__":
   args = get_args()
-  args.filepath = f'{args.epochs}-{args.lr}-sonnet.pt'  # Save path.
+  args.filepath = f'checkpoints/{args.model_size}-sonnet.pt'  # Model save path.
   seed_everything(args.seed)  # Fix the seed for reproducibility.
   if not args.generate_only:
     train(args)

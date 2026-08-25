@@ -32,8 +32,11 @@ from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
 
-from utils import custom_save, sync_if_cuda
-import time
+from utils import sync_if_cuda
+import time 
+from datetime import datetime
+import json
+from pathlib import Path
 
 TQDM_DISABLE = False
 
@@ -87,6 +90,9 @@ class ParaphraseGPT(nn.Module):
 
 
 def save_model(model, optimizer, args, filepath):
+
+  Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+
   save_info = {
     'model': model.state_dict(),
     'optim': optimizer.state_dict(),
@@ -106,6 +112,10 @@ def train(args):
   # Create the data and its corresponding datasets and dataloader.
   para_train_data = load_paraphrase_data(args.para_train)
   para_dev_data = load_paraphrase_data(args.para_dev)
+
+  if args.small_datasets:
+    para_train_data = para_train_data[:len(para_train_data) // 10]
+    para_dev_data = para_dev_data[:len(para_dev_data) // 10]
 
   para_train_data = ParaphraseDetectionDataset(para_train_data, args)
   para_dev_data = ParaphraseDetectionDataset(para_dev_data, args)
@@ -192,6 +202,10 @@ def test(args):
   para_dev_data = load_paraphrase_data(args.para_dev)
   para_test_data = load_paraphrase_data(args.para_test, split='test')
 
+  if args.small_datasets:
+    para_test_data = para_test_data[:len(para_test_data) // 10]
+    para_dev_data = para_dev_data[:len(para_dev_data) // 10]
+
   para_dev_data = ParaphraseDetectionDataset(para_dev_data, args)
   para_test_data = ParaphraseDetectionTestDataset(para_test_data, args)
 
@@ -210,6 +224,10 @@ def test(args):
   sync_if_cuda()
   args.evaluation_time = time.time() - start
 
+  ## Save
+  for path in [args.para_dev_out, args.para_test_out, args.summary_path]:
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+
   with open(args.para_dev_out, "w+") as f:
     f.write(f"id \t Predicted_Is_Paraphrase \n")
     for p, s in zip(dev_para_sent_ids, dev_para_y_pred):
@@ -220,29 +238,37 @@ def test(args):
     for p, s in zip(test_para_sent_ids, test_para_y_pred):
       f.write(f"{p}, {s} \n")
 
-  custom_save(args, "paraphrase_scores", accuracy=dev_para_acc)
+  with open(args.summary_path, "w") as f:
+    data = {"dev_accuracy": dev_para_acc, **vars(args)}
+    json.dump(data, f, indent=2)
 
 
 def get_args():
   parser = argparse.ArgumentParser()
 
+  timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+
   parser.add_argument("--para_train", type=str, default="data/quora-train.csv")
   parser.add_argument("--para_dev", type=str, default="data/quora-dev.csv")
   parser.add_argument("--para_test", type=str, default="data/quora-test-student.csv")
-  parser.add_argument("--para_dev_out", type=str, default="predictions/para-dev-output.csv")
-  parser.add_argument("--para_test_out", type=str, default="predictions/para-test-output.csv")
+  parser.add_argument("--para_dev_out", type=str, default=f"paraphrase_results/{timestamp}/para-dev-output.csv")
+  parser.add_argument("--para_test_out", type=str, default=f"paraphrase_results/{timestamp}/para-test-output.csv")
+  parser.add_argument("--summary_path", type=str, default=f"paraphrase_results/{timestamp}/summary.json")
+
+  parser.add_argument("--small_datasets", action="store_true",
+                       help="If selected, cuts train, dev and test datasets to be a tenth of their lengths")
 
   parser.add_argument("--seed", type=int, default=11711)
-  parser.add_argument("--epochs", type=int, default=10)
+  parser.add_argument("--epochs", type=int, default=50)
   parser.add_argument("--patience", type=int, default=5)
   parser.add_argument("--use_gpu", action='store_true')
 
-  parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
+  parser.add_argument("--batch_size", type=int, default=8)
   parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
   parser.add_argument("--model_size", type=str,
                       help="The model size as specified on hugging face. DO NOT use the xl model.",
                       choices=['gpt2', 'gpt2-medium', 'gpt2-large'], default='gpt2')
-  parser.add_argument("--paraphrase_dropout_prob", type=float, default=0.3)
+  parser.add_argument("--paraphrase_dropout_prob", type=float, default=0.1)
 
   parser.add_argument("--fine-tune-mode", type=str,
                       help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well',
@@ -273,7 +299,7 @@ def add_arguments(args):
 
 if __name__ == "__main__":
   args = get_args()
-  args.filepath = f'{args.epochs}-{args.lr}-paraphrase.pt'  # Save path.
+  args.filepath = f'checkpoints/{args.model_size}-paraphrase.pt'  # Save path.
   seed_everything(args.seed)  # Fix the seed for reproducibility.
   train(args)
   test(args)
