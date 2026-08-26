@@ -2,6 +2,7 @@
 
 
 0
+
 Thine eyes I love, and they, as pitying me,
 Knowing thy heart torment me with disdain,
 Have put on black, and loving mourners be,
@@ -14,17 +15,17 @@ Have put on black, and loving mourners be,
 Thy love, which I love, and they, as pitying me,
 Have put on black, and loving mourners be,
 Thy love, which I love, and they,
-Chrf: 0.23938726151062897
 
 1
+
 Beshrew that heart that makes my heart to groan
 For that deep wound it gives my friend and me.
 Is 't not enough to torture me alone,
 That my heart's love, my friend's love, my friend's love,
 And my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love, my friend's love
-Chrf: 0.1953884924197281
 
 2
+
 So, now I have confessed that he is thine
 And I myself am mortgaged to thy will,
 Myself I'll forfeit, so that other mine may live.
@@ -37,16 +38,16 @@ So that other mine may live.
   So, now I have confessed that he is mine,
   And I myself am mortgaged to thy will,
   So that other mine may live.
-Chrf: 0.27121858152538875
 
 3
+
 Whoever hath her wish, thou hast thy will,
 And will to boot, and will in overplus.
 More than enough am I that vex thee still,
 Thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love, thy love,
-Chrf: 0.11853528779987671
 
 4
+
 If thy soul check thee that I come so near,
 Swear to thy blind soul that I was thy will,
 And will, thy soul knows, is admitted there.
@@ -58,9 +59,9 @@ Thou art thy true self, thy true self, thy true self.
 Thou art thy true self, thy true self, thy true self.
 Thou art thy true self, thy true self, thy true self.
 Thou art thy true self, thy true self, thy true self.
-Chrf: 0.1713369912563592
 
 5
+
 Thou blind fool, Love, what dost thou to mine eyes
 That they behold and see not what they see?
 They know what beauty is, see where it lies,
@@ -73,9 +74,9 @@ They know what beauty is, see where it lies,
 And when they see it, they see not what they see.
 They know what beauty is, see where it lies,
 And when they see it, they see not what they see.
-Chrf: 0.24281995127816106
 
 6
+
 When my love swears that she is made of truth
 I do believe her though I know she lies,
 That she might think me some untutored youth,
@@ -90,23 +91,23 @@ And that she might think me to be a fool,
   And that she might think me to be a fool,
   And that she might think me to be a fool,
   And that
-Chrf: 0.23013203607470056
 
 7
+
 O, call not me to justify the wrong
 That thy unkindness lays upon my heart;
 Wound me not with thine eye but with thy tongue;
 Thou art my friend, my friend's friend, my friend's friend, my friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's friend's
-Chrf: 0.10733227373924854
 
 8
+
 Be wise as thou art cruel; do not press
 My tongue-tied patience with too much disdain,
 Lest sorrow lend me words, and words express
 Thy self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradictory self-contradict
-Chrf: 0.113018717040823
 
 9
+
 In faith, I do not love thee with mine eyes,
 For they in thee a thousand errors note;
 But 'tis my heart that loves what they despise,
@@ -122,9 +123,9 @@ For they in thee a thousand errors note;
   For they in thee a thousand errors note;
   And I do not love thee with mine eyes,
   For they in
-Chrf: 0.23765098900494
 
 10
+
 Love is my sin, and thy dear virtue hate,
 Hate of my sin, grounded on sinful loving.
 O, but with mine compare thou thine own state,
@@ -138,9 +139,9 @@ Thy love of thyself, thy love of thyself,
 Thy love of thyself, thy love of thyself,
 Thy love of thyself, thy love of thyself,
 Th
-Chrf: 0.17855145109787735
 
 11
+
 Lo, as a careful huswife runs to catch
 One of her feathered creatures broke away,
 Sets down her babe, and makes all swift dispatch;
@@ -154,4 +155,3 @@ And with her, with her, with her, with her,
   And with her, with her, with her, with her,
   And with her, with her, with her, with her,
 
-Chrf: 0.16350772045077297

@@ -16,6 +16,7 @@ from sklearn.metrics import f1_score, accuracy_score
 
 from models.gpt2 import GPT2Model
 from optimizer import AdamW
+from evaluation import model_eval_sentiment, model_test_sentiment
 from tqdm import tqdm
 
 from utils import sync_if_cuda
@@ -184,60 +185,6 @@ def load_data(filename, flag='train'):
     return data
 
 
-# Evaluate the model on dev examples.
-def model_eval(dataloader, model, device):
-  model.eval()  # Switch to eval model, will turn off randomness like dropout.
-  y_true = []
-  y_pred = []
-  sents = []
-  sent_ids = []
-  for step, batch in enumerate(tqdm(dataloader, desc=f'eval', disable=TQDM_DISABLE)):
-    b_ids, b_mask, b_labels, b_sents, b_sent_ids = batch['token_ids'], batch['attention_mask'], \
-                                                   batch['labels'], batch['sents'], batch['sent_ids']
-
-    b_ids = b_ids.to(device)
-    b_mask = b_mask.to(device)
-
-    logits = model(b_ids, b_mask)
-    logits = logits.detach().cpu().numpy()
-    preds = np.argmax(logits, axis=1).flatten()
-
-    b_labels = b_labels.flatten()
-    y_true.extend(b_labels)
-    y_pred.extend(preds)
-    sents.extend(b_sents)
-    sent_ids.extend(b_sent_ids)
-
-  f1 = f1_score(y_true, y_pred, average='macro')
-  acc = accuracy_score(y_true, y_pred)
-
-  return acc, f1, y_pred, y_true, sents, sent_ids
-
-
-# Evaluate the model on test examples.
-def model_test_eval(dataloader, model, device):
-  model.eval()  # Switch to eval model, will turn off randomness like dropout.
-  y_pred = []
-  sents = []
-  sent_ids = []
-  for step, batch in enumerate(tqdm(dataloader, desc=f'eval', disable=TQDM_DISABLE)):
-    b_ids, b_mask, b_sents, b_sent_ids = batch['token_ids'], batch['attention_mask'], \
-                                         batch['sents'], batch['sent_ids']
-
-    b_ids = b_ids.to(device)
-    b_mask = b_mask.to(device)
-
-    logits = model(b_ids, b_mask)
-    logits = logits.detach().cpu().numpy()
-    preds = np.argmax(logits, axis=1).flatten()
-
-    y_pred.extend(preds)
-    sents.extend(b_sents)
-    sent_ids.extend(b_sent_ids)
-
-  return y_pred, sents, sent_ids
-
-
 def save_model(model, optimizer, args, config, filepath):
 
   Path(filepath).parent.mkdir(parents=True, exist_ok=True)
@@ -319,8 +266,8 @@ def train(args):
 
     train_loss = train_loss / (num_batches)
 
-    train_acc, train_f1, *_ = model_eval(train_dataloader, model, device)
-    dev_acc, dev_f1, *_ = model_eval(dev_dataloader, model, device)
+    train_acc, train_f1, *_ = model_eval_sentiment(train_dataloader, model, device)
+    dev_acc, dev_f1, *_ = model_eval_sentiment(dev_dataloader, model, device)
 
 
     ## Early stopping 
@@ -376,10 +323,10 @@ def test(args):
     if args.use_gpu:
       torch.cuda.reset_peak_memory_stats()
 
-    dev_acc, dev_f1, dev_pred, dev_true, dev_sents, dev_sent_ids = model_eval(dev_dataloader, model, device)
+    dev_acc, dev_f1, dev_pred, dev_true, dev_sents, dev_sent_ids = model_eval_sentiment(dev_dataloader, model, device)
     print('DONE DEV')
 
-    test_pred, test_sents, test_sent_ids = model_test_eval(test_dataloader, model, device)
+    test_pred, test_sents, test_sent_ids = model_test_sentiment(test_dataloader, model, device)
     print('DONE Test')
 
     sync_if_cuda()

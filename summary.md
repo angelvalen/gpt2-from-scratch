@@ -45,5 +45,5 @@ Epochs 50 with 5 patience for all
 | Paraphrase (28k) | Last linear | 1e-3 | 64 | 0.3 | 0.706 | 2508 | 70
 | Paraphrase (28k) | Full model | 1e-5 | 32 | 0.1 | 0.848 | 8022 | 65
 | Sonnets | Full model | 1e-5 | 8 | 0.1 |
-| Sonnets (decoding) | Top p | temp 0.8–0.9 | top_p 0.9 | - | 0.318 | 446 | 36
-| Sonnets (decoding) | Beam search | beams 5 | len penalty 0.6 | - | 0.189 | - | 48
+| Sonnets (decoding) | Top p | temp 0.8–0.9 | top_p 0.9 | - | 24.02 | 428 | 36
+| Sonnets (decoding) | Beam search | beams 5 | len penalty 0.6 | - | 14.41 | - | 48

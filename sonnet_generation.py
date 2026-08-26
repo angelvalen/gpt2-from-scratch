@@ -26,10 +26,9 @@ from datasets import (
 from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
+from evaluation import sonnets_eval
 
 from utils import sync_if_cuda
-from collections import Counter
-import warnings
 import time
 from datetime import datetime
 import json
@@ -318,8 +317,9 @@ def train(args):
 
     print("Evaluating on dev held out sonnets") ### EVALUATION CODE IS NOT BATCHED SINCE MODEL.GENERATE() ISNT ORIGINALLY BATCHED
     model.eval()
-    total_chrf = 0
-    for sonnet_held_out, sonnet_labels in tqdm(zip(held_out_sonnet_dataset, held_out_labels_dataset), total=len(held_out_sonnet_dataset)):
+    generated_sonnets = []
+    for sonnet_held_out in tqdm(held_out_sonnet_dataset, total=len(held_out_sonnet_dataset)):
+      sonnet_id = sonnet_held_out[0]
       encoding = model.tokenizer(sonnet_held_out[1], return_tensors='pt', padding=True, truncation=True).to(device)
       
       if args.generation_method == "top_p":
@@ -329,10 +329,10 @@ def train(args):
       else:
         raise ValueError(f"Unknown generation method: {args.generation_method}")
 
-      chrf = compute_chrf(sonnet_held_out[1], output[1], sonnet_labels[1])
-      total_chrf += chrf
+      generated_sonnets.append((sonnet_id, output[1]))
 
-    total_chrf /= len(held_out_sonnet_dataset)
+    
+    total_chrf = sonnets_eval(generated_sonnets, held_out_labels_dataset, held_out_sonnet_dataset)
 
     print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, dev CHRF :: {total_chrf :.3f}")
 
@@ -375,7 +375,6 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
   dev_labels_dataset = SonnetsDataset(args.held_out_sonnet_dev_labels)
 
   dev_sonnets = []
-  total_chrf = 0
 
   sync_if_cuda()
   start = time.time()
@@ -384,7 +383,7 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
     torch.cuda.reset_peak_memory_stats()
 
   print("Generating dev sonnets")
-  for sonnet_held_out, sonnet_labels in tqdm(zip(dev_dataset, dev_labels_dataset), total=len(dev_dataset)):
+  for sonnet_held_out in tqdm(dev_dataset, total=len(dev_dataset)):
 
     # Sonnet generation
     sonnet_id = sonnet_held_out[0]
@@ -397,13 +396,9 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
     else:
       raise ValueError(f"Unknown generation method: {args.generation_method}")
 
+    dev_sonnets.append((sonnet_id, output[1]))
 
-    chrf = compute_chrf(sonnet_held_out[1], output[1], sonnet_labels[1])
-    total_chrf += chrf
-
-    dev_sonnets.append((sonnet_id, output[1], chrf))
-
-  total_chrf /= len(dev_dataset)
+  total_chrf = sonnets_eval(dev_sonnets, dev_labels_dataset, dev_dataset)
   print("Dev CHRF: ", total_chrf)
 
 
@@ -442,62 +437,18 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
     f.write(f"--Generated Sonnets-- \n\n")
     for sonnet in dev_sonnets:
       f.write(f"\n{sonnet[0]}\n")
-      f.write(sonnet[1])
-      f.write(f"\nChrf: {sonnet[2]}\n")
+      f.write(f"\n{sonnet[1]}\n")
 
   # Save test predictions
   with open(args.sonnet_test_out, "w+") as f:
     f.write(f"--Generated Sonnets-- \n\n")
     for sonnet in test_sonnets:
       f.write(f"\n{sonnet[0]}\n")
-      f.write(f"{sonnet[1]}\n")
+      f.write(f"\n{sonnet[1]}\n")
 
   with open(args.summary_path, "w") as f:
     data = {"dev_chrf": total_chrf, **vars(args)}
     json.dump(data, f, indent=2)
-
-def compute_chrf(held_out_reference, hypothesis, reference, beta=1):
-  """Computes CHRF score (https://aclanthology.org/anthology-files/pdf/W/W15/W15-3049.pdf)
-  for the predicted continuation against a gold reference"""
-
-  # Remove initial reference from chrf score
-  hypothesis = hypothesis[len(held_out_reference):]
-  reference = reference[len(held_out_reference):]
-
-  if not hypothesis:
-    return 0.0
-
-  precision = 0.
-  recall = 0.
-  for n in range(1, 7):
-
-    hyp_n_grams = [hypothesis[i:i+n] for i in range(len(hypothesis) - n + 1)]
-    ref_n_grams = [reference[i:i+n] for i in range(len(reference) - n + 1)]
-
-    if not hyp_n_grams or not ref_n_grams:
-            msg = f"""Couldnt extract {n}-grams for hypothesis: 
-            {hypothesis} 
-            and reference: 
-            {reference}."""
-            warnings.warn(msg)
-            continue
-    
-    hyp_counts = Counter(hyp_n_grams)
-    ref_counts = Counter(ref_n_grams)
-
-    matches = sum(min(hyp_counts[gram], ref_counts[gram]) for gram in hyp_counts)
-    precision += matches / len(hyp_n_grams)
-    recall += matches / len(ref_n_grams)
-
-  # Return 0 if no overlap at all
-  if precision + recall == 0:
-    return 0.0
-
-  precision /= 6
-  recall /= 6
-  chrf = (1 + beta**2) * precision * recall / (beta**2 * precision + recall)
-
-  return chrf
 
 
 def get_args():
