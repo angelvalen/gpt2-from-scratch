@@ -48,23 +48,23 @@ class GPT2SentimentClassifier(torch.nn.Module):
   Thus, your forward() should return one logit for each of the 5 classes.
   '''
 
-  def __init__(self, config):
+  def __init__(self, args):
     super(GPT2SentimentClassifier, self).__init__()
-    self.num_labels = config.num_labels
-    self.gpt = GPT2Model.from_pretrained()
+    self.num_labels = args.num_labels
+    self.gpt = GPT2Model.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
 
     # Pretrain mode does not require updating GPT paramters.
-    assert config.fine_tune_mode in ["last-linear-layer", "full-model"]
+    assert args.fine_tune_mode in ["last-linear-layer", "full-model"]
     for param in self.gpt.parameters():
-      if config.fine_tune_mode == 'last-linear-layer':
+      if args.fine_tune_mode == 'last-linear-layer':
         param.requires_grad = False
-      elif config.fine_tune_mode == 'full-model':
+      elif args.fine_tune_mode == 'full-model':
         param.requires_grad = True
 
     ### TODO: Create any instance variables you need to classify the sentiment of BERT embeddings.
     ### YOUR CODE HERE
-    self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
-    self.projection = torch.nn.Linear(config.hidden_size, config.num_labels)
+    self.dropout = torch.nn.Dropout(args.hidden_dropout_prob)
+    self.projection = torch.nn.Linear(args.d, args.num_labels)
 
 
   def forward(self, input_ids, attention_mask):
@@ -185,7 +185,7 @@ def load_data(filename, flag='train'):
     return data
 
 
-def save_model(model, optimizer, args, config, filepath):
+def save_model(model, optimizer, args, filepath):
 
   Path(filepath).parent.mkdir(parents=True, exist_ok=True)
   
@@ -193,7 +193,6 @@ def save_model(model, optimizer, args, config, filepath):
     'model': model.state_dict(),
     'optim': optimizer.state_dict(),
     'args': args,
-    'model_config': config,
     'system_rng': random.getstate(),
     'numpy_rng': np.random.get_state(),
     'torch_rng': torch.random.get_rng_state(),
@@ -221,15 +220,9 @@ def train(args):
                               collate_fn=dev_dataset.collate_fn)
 
   # Init model.
-  config = {'hidden_dropout_prob': args.hidden_dropout_prob,
-            'num_labels': num_labels,
-            'hidden_size': args.d,
-            'data_dir': '.',
-            'fine_tune_mode': args.fine_tune_mode}
+  args.num_labels = num_labels
 
-  config = SimpleNamespace(**config)
-
-  model = GPT2SentimentClassifier(config)
+  model = GPT2SentimentClassifier(args)
   model = model.to(device)
 
   lr = args.lr
@@ -274,7 +267,7 @@ def train(args):
     if dev_acc > best_dev_acc:
       best_dev_acc = dev_acc
       args.best_epoch = epoch
-      save_model(model, optimizer, args, config, args.filepath)
+      save_model(model, optimizer, args, args.filepath)
       epochs_without_improvement = 0 
 
     else:
@@ -304,8 +297,7 @@ def test(args):
       torch.cuda.reset_peak_memory_stats()
 
     saved = torch.load(args.filepath, weights_only=False)
-    config = saved['model_config']
-    model = GPT2SentimentClassifier(config)
+    model = GPT2SentimentClassifier(saved['args'])
     model.load_state_dict(saved['model'])
     model = model.to(device)
     print(f"load model from {args.filepath}")
