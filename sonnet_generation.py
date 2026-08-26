@@ -28,11 +28,12 @@ from models.gpt2 import GPT2Model
 from optimizer import AdamW
 from evaluation import sonnets_eval
 
-from utils import sync_if_cuda
+from utils import sync_if_cuda, flush_memory
 import time
 from datetime import datetime
 import json
 from pathlib import Path
+import gc
 
 TQDM_DISABLE = False
 
@@ -264,6 +265,10 @@ def save_model(model, optimizer, args, filepath):
 def train(args):
   """Train GPT-2 for paraphrase detection on the Quora dataset."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+
+  if args.use_gpu:
+    torch.cuda.reset_peak_memory_stats()
+
   # Create the data and its corresponding datasets and dataloader.
   sonnet_dataset = SonnetsDataset(args.sonnet_train)
   sonnet_dataloader = DataLoader(sonnet_dataset, shuffle=True, batch_size=args.batch_size,
@@ -286,9 +291,6 @@ def train(args):
   # Run for the specified number of epochs.
   sync_if_cuda()
   start = time.time()
-
-  if args.use_gpu:
-    torch.cuda.reset_peak_memory_stats()
 
   for epoch in range(args.epochs):
     model.train()
@@ -360,9 +362,14 @@ def train(args):
     args.train_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
     args.train_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
 
+
 @torch.no_grad()
 def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE MODEL.GENERATE() ISNT ORIGINALLY BATCHED
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+
+  if args.use_gpu:
+    torch.cuda.reset_peak_memory_stats()
+
   saved = torch.load(args.filepath, weights_only=False, map_location=device)
 
   model = SonnetGPT(saved['args'])
@@ -379,8 +386,6 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
   sync_if_cuda()
   start = time.time()
 
-  if args.use_gpu:
-    torch.cuda.reset_peak_memory_stats()
 
   print("Generating dev sonnets")
   for sonnet_held_out in tqdm(dev_dataset, total=len(dev_dataset)):
@@ -424,6 +429,7 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
   sync_if_cuda()
   args.evaluation_time = time.time() - start
 
+  # Save memory usage
   if args.use_gpu:
     args.eval_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
     args.eval_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
@@ -514,4 +520,5 @@ if __name__ == "__main__":
   seed_everything(args.seed)  # Fix the seed for reproducibility.
   if not args.generate_only:
     train(args)
+    flush_memory()
   generate_submission_sonnets(args)

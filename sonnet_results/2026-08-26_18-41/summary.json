@@ -4,9 +4,9 @@
   "held_out_sonnet_dev": "data/sonnets_held_out_dev.txt",
   "held_out_sonnet_dev_labels": "data/TRUE_sonnets_held_out_dev.txt",
   "held_out_sonnet_test": "data/sonnets_held_out.txt",
-  "sonnet_dev_out": "sonnet_results/2026-08-26_17-04/generated_sonnets_dev.txt",
-  "sonnet_test_out": "sonnet_results/2026-08-26_17-04/generated_sonnets_test.txt",
-  "summary_path": "sonnet_results/2026-08-26_17-04/summary.json",
+  "sonnet_dev_out": "sonnet_results/2026-08-26_18-41/generated_sonnets_dev.txt",
+  "sonnet_test_out": "sonnet_results/2026-08-26_18-41/generated_sonnets_test.txt",
+  "summary_path": "sonnet_results/2026-08-26_18-41/summary.json",
   "seed": 11711,
   "epochs": 50,
   "patience": 5,
@@ -21,7 +21,7 @@
   "model_size": "gpt2",
   "generate_only": true,
   "filepath": "checkpoints/gpt2-sonnet.pt",
-  "evaluation_time": 48.91602611541748,
+  "evaluation_time": 49.651427268981934,
   "eval_peak_allocated_gb": 2.138325504,
   "eval_peak_reserved_gb": 2.359296
 }

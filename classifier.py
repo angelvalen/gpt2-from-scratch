@@ -19,7 +19,7 @@ from optimizer import AdamW
 from evaluation import model_eval_sentiment, model_test_sentiment
 from tqdm import tqdm
 
-from utils import sync_if_cuda
+from utils import sync_if_cuda, flush_memory
 import time
 from datetime import datetime
 import json
@@ -205,6 +205,9 @@ def save_model(model, optimizer, args, config, filepath):
 
 def train(args):
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+  if args.use_gpu:
+    torch.cuda.reset_peak_memory_stats()
+
   # Create the data and its corresponding datasets and dataloader.
   train_data, num_labels = load_data(args.train, 'train')
   dev_data = load_data(args.dev, 'valid')
@@ -238,9 +241,6 @@ def train(args):
   # Run for the specified number of epochs.
   sync_if_cuda()
   start = time.time()
-
-  if args.use_gpu:
-    torch.cuda.reset_peak_memory_stats()
 
   for epoch in range(args.epochs):
     model.train()
@@ -300,6 +300,9 @@ def train(args):
 def test(args):
   with torch.no_grad():
     device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+    if args.use_gpu:
+      torch.cuda.reset_peak_memory_stats()
+
     saved = torch.load(args.filepath, weights_only=False)
     config = saved['model_config']
     model = GPT2SentimentClassifier(config)
@@ -319,9 +322,6 @@ def test(args):
 
     sync_if_cuda()
     start = time.time()
-
-    if args.use_gpu:
-      torch.cuda.reset_peak_memory_stats()
 
     dev_acc, dev_f1, dev_pred, dev_true, dev_sents, dev_sent_ids = model_eval_sentiment(dev_dataloader, model, device)
     print('DONE DEV')
@@ -419,9 +419,11 @@ if __name__ == "__main__":
 
   print('Training Sentiment Classifier on SST...')
   train(sst_args)
+  flush_memory()
 
   print('Evaluating on SST...')
   test(sst_args)
+  flush_memory()
 
   ### CFIMDB
   cfimdb_args = copy.copy(args)
@@ -437,6 +439,7 @@ if __name__ == "__main__":
 
   print('Training Sentiment Classifier on cfimdb...')
   train(cfimdb_args)
-
+  flush_memory()
+  
   print('Evaluating on cfimdb...')
   test(cfimdb_args)

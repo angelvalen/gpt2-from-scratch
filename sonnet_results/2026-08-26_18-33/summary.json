@@ -4,9 +4,9 @@
   "held_out_sonnet_dev": "data/sonnets_held_out_dev.txt",
   "held_out_sonnet_dev_labels": "data/TRUE_sonnets_held_out_dev.txt",
   "held_out_sonnet_test": "data/sonnets_held_out.txt",
-  "sonnet_dev_out": "sonnet_results/2026-08-26_16-55/generated_sonnets_dev.txt",
-  "sonnet_test_out": "sonnet_results/2026-08-26_16-55/generated_sonnets_test.txt",
-  "summary_path": "sonnet_results/2026-08-26_16-55/summary.json",
+  "sonnet_dev_out": "sonnet_results/2026-08-26_18-33/generated_sonnets_dev.txt",
+  "sonnet_test_out": "sonnet_results/2026-08-26_18-33/generated_sonnets_test.txt",
+  "summary_path": "sonnet_results/2026-08-26_18-33/summary.json",
   "seed": 11711,
   "epochs": 50,
   "patience": 5,
@@ -25,10 +25,10 @@
   "l": 12,
   "num_heads": 12,
   "best_epoch": 12,
-  "train_time": 428.48486852645874,
+  "train_time": 426.1850154399872,
   "train_peak_allocated_gb": 4.189236736,
   "train_peak_reserved_gb": 8.428453888,
-  "evaluation_time": 35.77806901931763,
-  "eval_peak_allocated_gb": 2.071067136,
-  "eval_peak_reserved_gb": 8.428453888
+  "evaluation_time": 35.33880376815796,
+  "eval_peak_allocated_gb": 2.044852736,
+  "eval_peak_reserved_gb": 2.216689664
 }

@@ -32,7 +32,7 @@ from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
 
-from utils import sync_if_cuda
+from utils import sync_if_cuda, flush_memory
 import time 
 from datetime import datetime
 import json
@@ -109,6 +109,8 @@ def save_model(model, optimizer, args, filepath):
 def train(args):
   """Train GPT-2 for paraphrase detection on the Quora dataset."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+  if args.use_gpu:
+    torch.cuda.reset_peak_memory_stats()
   # Create the data and its corresponding datasets and dataloader.
   para_train_data = load_paraphrase_data(args.para_train)
   para_dev_data = load_paraphrase_data(args.para_dev)
@@ -139,8 +141,6 @@ def train(args):
   sync_if_cuda()
   start = time.time()
 
-  if args.use_gpu:
-    torch.cuda.reset_peak_memory_stats()
 
   for epoch in range(args.epochs):
     model.train()
@@ -198,6 +198,9 @@ def train(args):
 def test(args):
   """Evaluate your model on the dev and test datasets; save the predictions to disk."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+  if args.use_gpu:
+    torch.cuda.reset_peak_memory_stats()
+
   saved = torch.load(args.filepath, weights_only=False)
 
   model = ParaphraseGPT(saved['args'])
@@ -224,8 +227,6 @@ def test(args):
   sync_if_cuda()
   start = time.time()
 
-  if args.use_gpu:
-    torch.cuda.reset_peak_memory_stats()
 
   dev_para_acc, _, dev_para_y_pred, _, dev_para_sent_ids = model_eval_paraphrase(para_dev_dataloader, model, device)
   print(f"dev paraphrase acc :: {dev_para_acc :.3f}")
@@ -318,4 +319,5 @@ if __name__ == "__main__":
   args.filepath = f'checkpoints/{args.model_size}-paraphrase.pt'  # Save path.
   seed_everything(args.seed)  # Fix the seed for reproducibility.
   train(args)
+  flush_memory()
   test(args)

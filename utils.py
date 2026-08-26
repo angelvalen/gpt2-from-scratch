@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 import fnmatch
-from datetime import datetime
+import gc
 
 __version__ = "4.0.0"
 _torch_version = importlib_metadata.version("torch")
@@ -361,3 +361,10 @@ def get_extended_attention_mask(attention_mask: Tensor, dtype) -> Tensor:
   extended_attention_mask = extended_attention_mask.to(dtype=dtype)  # fp16 compatibility
   extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
   return extended_attention_mask
+
+
+def flush_memory():
+  """Safely frees unreferenced memory across CPU and GPU."""
+  gc.collect()
+  if torch.cuda.is_available():
+      torch.cuda.empty_cache()
