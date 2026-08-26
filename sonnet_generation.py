@@ -288,6 +288,9 @@ def train(args):
   sync_if_cuda()
   start = time.time()
 
+  if args.use_gpu:
+    torch.cuda.reset_peak_memory_stats()
+
   for epoch in range(args.epochs):
     model.train()
     train_loss = 0
@@ -352,6 +355,11 @@ def train(args):
   sync_if_cuda()
   args.train_time = time.time() - start
 
+  # Save memory usage
+  if args.use_gpu:
+    args.train_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
+    args.train_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
+
 @torch.no_grad()
 def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE MODEL.GENERATE() ISNT ORIGINALLY BATCHED
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
@@ -371,6 +379,9 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
 
   sync_if_cuda()
   start = time.time()
+
+  if args.use_gpu:
+    torch.cuda.reset_peak_memory_stats()
 
   print("Generating dev sonnets")
   for sonnet_held_out, sonnet_labels in tqdm(zip(dev_dataset, dev_labels_dataset), total=len(dev_dataset)):
@@ -417,6 +428,10 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
 
   sync_if_cuda()
   args.evaluation_time = time.time() - start
+
+  if args.use_gpu:
+    args.eval_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
+    args.eval_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
 
   ### Saving
   for path in [args.sonnet_dev_out, args.sonnet_test_out, args.summary_path]:

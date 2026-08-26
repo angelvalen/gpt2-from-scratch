@@ -292,6 +292,9 @@ def train(args):
   sync_if_cuda()
   start = time.time()
 
+  if args.use_gpu:
+    torch.cuda.reset_peak_memory_stats()
+
   for epoch in range(args.epochs):
     model.train()
     train_loss = 0
@@ -341,6 +344,11 @@ def train(args):
   sync_if_cuda()
   args.train_time = time.time() - start
 
+  # Save memory usage
+  if args.use_gpu:
+    args.train_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
+    args.train_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
+
 
 def test(args):
   with torch.no_grad():
@@ -365,6 +373,9 @@ def test(args):
     sync_if_cuda()
     start = time.time()
 
+    if args.use_gpu:
+      torch.cuda.reset_peak_memory_stats()
+
     dev_acc, dev_f1, dev_pred, dev_true, dev_sents, dev_sent_ids = model_eval(dev_dataloader, model, device)
     print('DONE DEV')
 
@@ -373,6 +384,10 @@ def test(args):
 
     sync_if_cuda()
     args.evaluation_time = time.time() - start
+
+    if args.use_gpu:
+      args.eval_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
+      args.eval_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
 
 
     ## Saving

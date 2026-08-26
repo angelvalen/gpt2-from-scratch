@@ -139,6 +139,9 @@ def train(args):
   sync_if_cuda()
   start = time.time()
 
+  if args.use_gpu:
+    torch.cuda.reset_peak_memory_stats()
+
   for epoch in range(args.epochs):
     model.train()
     train_loss = 0
@@ -186,6 +189,10 @@ def train(args):
   sync_if_cuda()
   args.train_time = time.time() - start
 
+  # Save memory usage
+  if args.use_gpu:
+      args.train_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
+      args.train_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
 
 @torch.no_grad()
 def test(args):
@@ -217,12 +224,21 @@ def test(args):
   sync_if_cuda()
   start = time.time()
 
+  if args.use_gpu:
+    torch.cuda.reset_peak_memory_stats()
+
   dev_para_acc, _, dev_para_y_pred, _, dev_para_sent_ids = model_eval_paraphrase(para_dev_dataloader, model, device)
   print(f"dev paraphrase acc :: {dev_para_acc :.3f}")
   test_para_y_pred, test_para_sent_ids = model_test_paraphrase(para_test_dataloader, model, device)
 
   sync_if_cuda()
   args.evaluation_time = time.time() - start
+
+  if args.use_gpu:
+    args.eval_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
+    args.eval_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
+
+  
 
   ## Save
   for path in [args.para_dev_out, args.para_test_out, args.summary_path]:
