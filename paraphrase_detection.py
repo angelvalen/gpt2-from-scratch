@@ -155,9 +155,20 @@ def train(args):
 
       # Compute the loss, gradients, and update the model's parameters.
       optimizer.zero_grad()
-      logits = model(b_ids, b_mask)
-      preds = torch.argmax(logits, dim=1)
-      loss = F.cross_entropy(logits, labels, reduction='mean')
+
+      # Mixed Precision training on GPU
+      if args.use_gpu:
+        assert torch.cuda.is_bf16_supported(), "GPU does not support BF16"
+        with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+          logits = model(b_ids, b_mask)
+          preds = torch.argmax(logits, dim=1)
+          loss = F.cross_entropy(logits, labels, reduction='mean')
+
+      else:
+        logits = model(b_ids, b_mask)
+        preds = torch.argmax(logits, dim=1)
+        loss = F.cross_entropy(logits, labels, reduction='mean')
+
       loss.backward()
       optimizer.step()
 

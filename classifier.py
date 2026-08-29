@@ -248,8 +248,16 @@ def train(args):
       b_labels = b_labels.to(device)
 
       optimizer.zero_grad()
-      logits = model(b_ids, b_mask)
-      loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+
+      # Mixed Precision training on GPU
+      if args.use_gpu:
+        assert torch.cuda.is_bf16_supported(), "GPU does not support BF16"
+        with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+          logits = model(b_ids, b_mask)
+          loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+      else:
+        logits = model(b_ids, b_mask)
+        loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
 
       loss.backward()
       optimizer.step()

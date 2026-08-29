@@ -305,10 +305,22 @@ def train(args):
 
       # Compute the loss, gradients, and update the model's parameters.
       optimizer.zero_grad()
-      logits, _ = model(b_ids, b_mask)
-      logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
-      labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
-      loss = F.cross_entropy(logits, labels, reduction='mean')
+
+      # Mixed Precision training on GPU
+      if args.use_gpu:
+        assert torch.cuda.is_bf16_supported(), "GPU does not support BF16"
+        with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+          logits, _ = model(b_ids, b_mask)
+          logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
+          labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
+          loss = F.cross_entropy(logits, labels, reduction='mean')
+
+      else:
+        logits, _ = model(b_ids, b_mask)
+        logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
+        labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
+        loss = F.cross_entropy(logits, labels, reduction='mean')
+
       loss.backward()
       optimizer.step()
 
@@ -320,19 +332,19 @@ def train(args):
     print("Evaluating on dev held out sonnets") ### EVALUATION CODE IS NOT BATCHED SINCE MODEL.GENERATE() ISNT ORIGINALLY BATCHED
     model.eval()
     generated_sonnets = []
-    for sonnet_held_out in tqdm(held_out_sonnet_dataset, total=len(held_out_sonnet_dataset)):
-      sonnet_id = sonnet_held_out[0]
-      encoding = model.tokenizer(sonnet_held_out[1], return_tensors='pt', padding=True, truncation=True).to(device)
-      
-      if args.generation_method == "top_p":
-        output = model.generate_top_p(encoding['input_ids'], temperature=args.temperature, top_p=args.top_p)
-      elif args.generation_method == "beam":
-        output = model.generate_beam(encoding["input_ids"], num_beams=args.num_beams, length_penalty=args.length_penalty)
-      else:
-        raise ValueError(f"Unknown generation method: {args.generation_method}")
+    with torch.no_grad():
+      for sonnet_held_out in tqdm(held_out_sonnet_dataset, total=len(held_out_sonnet_dataset)):
+        sonnet_id = sonnet_held_out[0]
+        encoding = model.tokenizer(sonnet_held_out[1], return_tensors='pt', padding=True, truncation=True).to(device)
+        
+        if args.generation_method == "top_p":
+          output = model.generate_top_p(encoding['input_ids'], temperature=args.temperature, top_p=args.top_p)
+        elif args.generation_method == "beam":
+          output = model.generate_beam(encoding["input_ids"], num_beams=args.num_beams, length_penalty=args.length_penalty)
+        else:
+          raise ValueError(f"Unknown generation method: {args.generation_method}")
 
-      generated_sonnets.append((sonnet_id, output[1]))
-
+        generated_sonnets.append((sonnet_id, output[1]))
     
     total_chrf = sonnets_eval(generated_sonnets, held_out_labels_dataset, held_out_sonnet_dataset)
 
