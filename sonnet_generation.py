@@ -287,6 +287,7 @@ def train(args):
   best_chrf = 0
   args.best_epoch = 0
   epochs_without_improvement = 0
+  scaler = torch.amp.GradScaler('cuda', enabled=args.use_gpu)
 
   # Run for the specified number of epochs.
   sync_if_cuda()
@@ -308,21 +309,22 @@ def train(args):
 
       # Mixed Precision training on GPU
       if args.use_gpu:
-        assert torch.cuda.is_bf16_supported(), "GPU does not support BF16"
-        with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+        with torch.autocast(device_type=device.type, dtype=torch.float16):
           logits, _ = model(b_ids, b_mask)
           logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
           labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
           loss = F.cross_entropy(logits, labels, reduction='mean')
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
       else:
         logits, _ = model(b_ids, b_mask)
         logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
         labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
         loss = F.cross_entropy(logits, labels, reduction='mean')
-
-      loss.backward()
-      optimizer.step()
+        loss.backward()
+        optimizer.step()
 
       train_loss += loss.item()
       num_batches += 1
@@ -331,6 +333,11 @@ def train(args):
 
     print("Evaluating on dev held out sonnets") ### EVALUATION CODE IS NOT BATCHED SINCE MODEL.GENERATE() ISNT ORIGINALLY BATCHED
     model.eval()
+
+    # Reseed so generation sampling is identical every epoch
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+
     generated_sonnets = []
     with torch.no_grad():
       for sonnet_held_out in tqdm(held_out_sonnet_dataset, total=len(held_out_sonnet_dataset)):
@@ -388,6 +395,10 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
   model.load_state_dict(saved['model'])
   model = model.to(device)
   model.eval()
+
+  # Reseed so this matches the reproducibility of the in-loop eval
+  torch.manual_seed(args.seed)
+  torch.cuda.manual_seed_all(args.seed)
 
   ## DEV
   dev_dataset = SonnetsDataset(args.held_out_sonnet_dev)

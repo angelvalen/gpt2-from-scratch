@@ -1,0 +1,3 @@
+1663s on fp16
+3914s on bf16
+time to finish epoch 7, as seen in kaggle's logs

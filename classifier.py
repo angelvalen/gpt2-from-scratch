@@ -230,6 +230,7 @@ def train(args):
   best_dev_acc = 0
   args.best_epoch = 0
   epochs_without_improvement = 0
+  scaler = torch.amp.GradScaler('cuda', enabled=args.use_gpu)
 
   # Run for the specified number of epochs.
   sync_if_cuda()
@@ -251,16 +252,18 @@ def train(args):
 
       # Mixed Precision training on GPU
       if args.use_gpu:
-        assert torch.cuda.is_bf16_supported(), "GPU does not support BF16"
-        with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+        with torch.autocast(device_type=device.type, dtype=torch.float16):
           logits = model(b_ids, b_mask)
           loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+
       else:
         logits = model(b_ids, b_mask)
         loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
-
-      loss.backward()
-      optimizer.step()
+        loss.backward()
+        optimizer.step()
 
       train_loss += loss.item()
       num_batches += 1
@@ -366,6 +369,8 @@ def get_args():
                       help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well',
                       choices=('last-linear-layer', 'full-model'), default="last-linear-layer")
   parser.add_argument("--use_gpu", action='store_true')
+  parser.add_argument("--exclude_sst", action='store_true')
+  parser.add_argument("--exclude_cfimdb", action='store_true')
 
   parser.add_argument("--sst_batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=64)
   parser.add_argument("--cfimdb_batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
@@ -405,41 +410,46 @@ if __name__ == "__main__":
   add_arguments(args)
 
   ### SST
+  
+  if not args.exclude_sst:
 
-  sst_args = copy.copy(args)
-  sst_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-  sst_args.filepath=f'checkpoints/{args.model_size}-sst-classifier.pt'
-  sst_args.train='data/ids-sst-train.csv'
-  sst_args.dev='data/ids-sst-dev.csv'
-  sst_args.test='data/ids-sst-test-student.csv'
-  sst_args.dev_out=f"sentiment_results/{sst_timestamp}/sst_dev_out.csv"
-  sst_args.test_out=f"sentiment_results/{sst_timestamp}/sst_test_out.csv"
-  sst_args.summary_path=f"sentiment_results/{sst_timestamp}/sst_summary.json"
-  sst_args.batch_size = args.sst_batch_size
+    sst_args = copy.copy(args)
+    sst_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    sst_args.filepath=f'checkpoints/{args.model_size}-sst-classifier.pt'
+    sst_args.train='data/ids-sst-train.csv'
+    sst_args.dev='data/ids-sst-dev.csv'
+    sst_args.test='data/ids-sst-test-student.csv'
+    sst_args.dev_out=f"sentiment_results/{sst_timestamp}-sst/sst_dev_out.csv"
+    sst_args.test_out=f"sentiment_results/{sst_timestamp}-sst/sst_test_out.csv"
+    sst_args.summary_path=f"sentiment_results/{sst_timestamp}-sst/sst_summary.json"
+    sst_args.batch_size = args.sst_batch_size
 
-  print('Training Sentiment Classifier on SST...')
-  train(sst_args)
-  flush_memory()
+    print('Training Sentiment Classifier on SST...')
+    train(sst_args)
+    flush_memory()
 
-  print('Evaluating on SST...')
-  test(sst_args)
-  flush_memory()
+    print('Evaluating on SST...')
+    test(sst_args)
+    flush_memory()
 
   ### CFIMDB
-  cfimdb_args = copy.copy(args)
-  cfimdb_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-  cfimdb_args.filepath=f'checkpoints/{args.model_size}-cfimdb-classifier.pt'
-  cfimdb_args.train='data/ids-cfimdb-train.csv'
-  cfimdb_args.dev='data/ids-cfimdb-dev.csv'
-  cfimdb_args.test='data/ids-cfimdb-test-student.csv'
-  cfimdb_args.dev_out=f"sentiment_results/{cfimdb_timestamp}/cfimdb_dev_out.csv"
-  cfimdb_args.test_out=f"sentiment_results/{cfimdb_timestamp}/cfimdb_test_out.csv"
-  cfimdb_args.summary_path=f"sentiment_results/{cfimdb_timestamp}/cfimdb_summary.json"
-  cfimdb_args.batch_size = args.cfimdb_batch_size
 
-  print('Training Sentiment Classifier on cfimdb...')
-  train(cfimdb_args)
-  flush_memory()
-  
-  print('Evaluating on cfimdb...')
-  test(cfimdb_args)
+  if not args.exclude_cfimdb:
+      
+    cfimdb_args = copy.copy(args)
+    cfimdb_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    cfimdb_args.filepath=f'checkpoints/{args.model_size}-cfimdb-classifier.pt'
+    cfimdb_args.train='data/ids-cfimdb-train.csv'
+    cfimdb_args.dev='data/ids-cfimdb-dev.csv'
+    cfimdb_args.test='data/ids-cfimdb-test-student.csv'
+    cfimdb_args.dev_out=f"sentiment_results/{cfimdb_timestamp}-cfimdb/cfimdb_dev_out.csv"
+    cfimdb_args.test_out=f"sentiment_results/{cfimdb_timestamp}-cfimdb/cfimdb_test_out.csv"
+    cfimdb_args.summary_path=f"sentiment_results/{cfimdb_timestamp}-cfimdb/cfimdb_summary.json"
+    cfimdb_args.batch_size = args.cfimdb_batch_size
+
+    print('Training Sentiment Classifier on cfimdb...')
+    train(cfimdb_args)
+    flush_memory()
+    
+    print('Evaluating on cfimdb...')
+    test(cfimdb_args)

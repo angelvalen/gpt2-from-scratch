@@ -1,0 +1,5 @@
+Per-epoch, using the matched epoch-17 marker (most reliable comparison)
+fp16: reached epoch 17 at ~1150s into training
+bf16: reached epoch 17 at ~1193s into training
+
+Saw on kaggle's logs timestamps.

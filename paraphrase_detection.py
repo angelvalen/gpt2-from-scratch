@@ -136,6 +136,7 @@ def train(args):
   best_dev_acc = 0
   args.best_epoch = 0
   epochs_without_improvement = 0
+  scaler = torch.amp.GradScaler('cuda', enabled=args.use_gpu)
 
   # Run for the specified number of epochs.
   sync_if_cuda()
@@ -158,19 +159,19 @@ def train(args):
 
       # Mixed Precision training on GPU
       if args.use_gpu:
-        assert torch.cuda.is_bf16_supported(), "GPU does not support BF16"
-        with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+        with torch.autocast(device_type=device.type, dtype=torch.float16):
           logits = model(b_ids, b_mask)
           preds = torch.argmax(logits, dim=1)
           loss = F.cross_entropy(logits, labels, reduction='mean')
-
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
       else:
         logits = model(b_ids, b_mask)
         preds = torch.argmax(logits, dim=1)
         loss = F.cross_entropy(logits, labels, reduction='mean')
-
-      loss.backward()
-      optimizer.step()
+        loss.backward()
+        optimizer.step()
 
       train_loss += loss.item()
       num_batches += 1
