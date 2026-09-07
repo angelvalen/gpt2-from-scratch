@@ -16,7 +16,7 @@ from sklearn.metrics import f1_score, accuracy_score
 
 from models.gpt2 import GPT2Model
 from optimizer import AdamW
-from evaluation import model_eval_sentiment, model_test_sentiment
+from evaluation import model_eval_sentiment, model_test_sentiment, plot_training
 from tqdm import tqdm
 
 from utils import sync_if_cuda, flush_memory
@@ -231,6 +231,8 @@ def train(args):
   args.best_epoch = 0
   epochs_without_improvement = 0
   scaler = torch.amp.GradScaler('cuda', enabled=args.use_gpu)
+  train_loss_history = []
+  dev_acc_history = []
 
   # Run for the specified number of epochs.
   sync_if_cuda()
@@ -269,10 +271,11 @@ def train(args):
       num_batches += 1
 
     train_loss = train_loss / (num_batches)
+    train_loss_history.append(train_loss)
 
     train_acc, train_f1, *_ = model_eval_sentiment(train_dataloader, model, device)
     dev_acc, dev_f1, *_ = model_eval_sentiment(dev_dataloader, model, device)
-
+    dev_acc_history.append(dev_acc)
 
     ## Early stopping 
     if dev_acc > best_dev_acc:
@@ -300,6 +303,8 @@ def train(args):
     args.train_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
     args.train_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
 
+  plot_training(train_loss_history, dev_acc_history, metric_name="Accuracy")
+  
 
 def test(args):
   with torch.no_grad():

@@ -11,6 +11,7 @@ import torch
 from sklearn.metrics import f1_score, accuracy_score
 from tqdm import tqdm
 import numpy as np
+import matplotlib.pyplot as plt
 from sacrebleu.metrics import CHRF
 from datasets import (
   SonnetsDataset,
@@ -199,3 +200,35 @@ def compute_chrf(held_out_reference, hypothesis, reference, beta=1):
   chrf = (1 + beta**2) * precision * recall / (beta**2 * precision + recall)
 
   return chrf
+
+
+def plot_training(train_loss, dev_metric, metric_name):
+
+  best_epoch = np.argmax(dev_metric)
+  epochs = range(len(train_loss))
+
+  fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+
+  # Train loss
+  ax[0].plot(epochs, train_loss)
+  ax[0].set_xlabel('Epoch')
+  ax[0].set_ylabel('Loss')
+  ax[0].set_title('Training Loss')
+  ax[0].grid(True)
+
+  # Dev metric
+  ax[1].plot(epochs, dev_metric)
+  ax[1].scatter(
+      best_epoch,
+      dev_metric[best_epoch],
+      zorder=5,
+      label=f'Best epoch ({best_epoch})'
+  )
+  ax[1].set_xlabel('Epoch')
+  ax[1].set_ylabel(metric_name)
+  ax[1].set_title(f'Dev {metric_name}')
+  ax[1].legend()
+  ax[1].grid(True)
+
+  plt.tight_layout()
+  plt.show()

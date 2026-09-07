@@ -26,7 +26,7 @@ from datasets import (
 from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
-from evaluation import sonnets_eval
+from evaluation import sonnets_eval, plot_training
 
 from utils import sync_if_cuda, flush_memory
 import time
@@ -288,6 +288,8 @@ def train(args):
   args.best_epoch = 0
   epochs_without_improvement = 0
   scaler = torch.amp.GradScaler('cuda', enabled=args.use_gpu)
+  train_loss_history = []
+  dev_chrf_history = []
 
   # Run for the specified number of epochs.
   sync_if_cuda()
@@ -330,6 +332,7 @@ def train(args):
       num_batches += 1
 
     train_loss = train_loss / num_batches
+    train_loss_history.append(train_loss)
 
     print("Evaluating on dev held out sonnets") ### EVALUATION CODE IS NOT BATCHED SINCE MODEL.GENERATE() ISNT ORIGINALLY BATCHED
     model.eval()
@@ -354,6 +357,7 @@ def train(args):
         generated_sonnets.append((sonnet_id, output[1]))
     
     total_chrf = sonnets_eval(generated_sonnets, held_out_labels_dataset, held_out_sonnet_dataset)
+    dev_chrf_history.append(total_chrf)
 
     print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, dev CHRF :: {total_chrf :.3f}")
 
@@ -380,6 +384,8 @@ def train(args):
   if args.use_gpu:
     args.train_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
     args.train_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
+
+  plot_training(train_loss_history, dev_chrf_history, metric_name="CHRF")
 
 
 @torch.no_grad()
