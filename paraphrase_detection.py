@@ -132,7 +132,7 @@ def train(args):
   model = model.to(device)
 
   lr = args.lr
-  optimizer = AdamW(model.parameters(), lr=lr, weight_decay=0.)
+  optimizer = AdamW(model.parameters(), lr=lr, weight_decay=args.weight_decay)
   best_dev_acc = 0
   args.best_epoch = 0
   epochs_without_improvement = 0
@@ -301,6 +301,7 @@ def get_args():
 
   parser.add_argument("--batch_size", type=int, default=8)
   parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
+  parser.add_argument("--weight_decay", type=float, default=0.0)
   parser.add_argument("--model_size", type=str,
                       help="The model size as specified on hugging face. DO NOT use the xl model.",
                       choices=['gpt2', 'gpt2-medium', 'gpt2-large'], default='gpt2')

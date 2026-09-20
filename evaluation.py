@@ -13,6 +13,7 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 from sacrebleu.metrics import CHRF
+from pathlib import Path
 from datasets import (
   SonnetsDataset,
 )
@@ -231,4 +232,6 @@ def plot_training(train_loss, dev_metric, metric_name, plot_path):
   ax[1].grid(True)
 
   plt.tight_layout()
+
+  Path(plot_path).parent.mkdir(parents=True, exist_ok=True)
   plt.savefig(plot_path, dpi=300, bbox_inches="tight")

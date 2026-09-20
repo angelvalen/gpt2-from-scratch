@@ -226,7 +226,8 @@ def train(args):
   model = model.to(device)
 
   lr = args.lr
-  optimizer = AdamW(model.parameters(), lr=lr)
+  optimizer = AdamW(model.parameters(), lr=lr, weight_decay=args.weight_decay)
+  optimizer.zero_grad()
   best_dev_acc = 0
   args.best_epoch = 0
   epochs_without_improvement = 0
@@ -250,7 +251,6 @@ def train(args):
       b_mask = b_mask.to(device)
       b_labels = b_labels.to(device)
 
-      optimizer.zero_grad()
 
       # Mixed Precision training on GPU
       if args.use_gpu:
@@ -258,14 +258,22 @@ def train(args):
           logits = model(b_ids, b_mask)
           loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
         scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+
+        # Gradient accumulation
+        if (num_batches + 1) % args.grad_accum_steps == 0:
+          scaler.step(optimizer)
+          optimizer.zero_grad()
+          scaler.update()
 
       else:
         logits = model(b_ids, b_mask)
         loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
         loss.backward()
-        optimizer.step()
+
+        # Gradient accumulation
+        if (num_batches + 1) % args.grad_accum_steps == 0:
+          optimizer.step()
+          optimizer.zero_grad()
 
       train_loss += loss.item()
       num_batches += 1
@@ -376,13 +384,13 @@ def get_args():
                       help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well',
                       choices=('last-linear-layer', 'full-model'), default="last-linear-layer")
   parser.add_argument("--use_gpu", action='store_true')
-  parser.add_argument("--exclude_sst", action='store_true')
-  parser.add_argument("--exclude_cfimdb", action='store_true')
 
   parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=64)
+  parser.add_argument("--grad_accum_steps", help='Accumulation steps for gradient updates, useful cfimbd', type=int, default=1)
   parser.add_argument("--hidden_dropout_prob", type=float, default=0.1)
   parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
                       default=1e-5)
+  parser.add_argument("--weight_decay", type=float, default=0.0)
   parser.add_argument("--model_size", type=str,
                       help="The model size as specified on hugging face. DO NOT use the xl model.",
                       choices=['gpt2', 'gpt2-medium', 'gpt2-large'], default='gpt2')
