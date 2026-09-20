@@ -203,7 +203,7 @@ def train(args):
 
   # Save total training time
   sync_if_cuda()
-  args.train_time = time.time() - start
+  args.train_time = (time.time() - start) / 60
 
   # Save memory usage
   if args.use_gpu:
@@ -274,10 +274,9 @@ def test(args):
     for p, s in zip(test_para_sent_ids, test_para_y_pred):
       f.write(f"{p}, {s} \n")
 
-  with open(args.summary_path, "w") as f:
+  with open(args.summary_path, "a") as f:
     data = {"dev_accuracy": dev_para_acc, **vars(args)}
-    json.dump(data, f, indent=2)
-
+    f.write(json.dumps(data) + "\n")
 
 def get_args():
   parser = argparse.ArgumentParser()
@@ -289,7 +288,7 @@ def get_args():
   parser.add_argument("--para_test", type=str, default="data/quora-test-student.csv")
   parser.add_argument("--para_dev_out", type=str, default=f"paraphrase_results/{timestamp}/para-dev-output.csv")
   parser.add_argument("--para_test_out", type=str, default=f"paraphrase_results/{timestamp}/para-test-output.csv")
-  parser.add_argument("--summary_path", type=str, default=f"paraphrase_results/{timestamp}/summary.json")
+  parser.add_argument("--summary_path", type=str, default=f"paraphrase_results/paraphrase_summaries.jsonl")
 
   parser.add_argument("--small_datasets", action="store_true",
                        help="If selected, cuts train, dev and test datasets to be a tenth of their lengths")

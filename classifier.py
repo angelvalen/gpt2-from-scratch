@@ -296,7 +296,7 @@ def train(args):
 
   # Save training time
   sync_if_cuda()
-  args.train_time = time.time() - start
+  args.train_time = (time.time() - start) / 60
 
   # Save memory usage
   if args.use_gpu:
@@ -360,13 +360,15 @@ def test(args):
       for p, s in zip(test_sent_ids, test_pred):
         f.write(f"{p}, {s} \n")
 
-    with open(args.summary_path, "w") as f:
+    with open(args.summary_path, "a") as f:
       data = {"dev_accuracy": dev_acc, **vars(args)}
-      json.dump(data, f, indent=2)
+      f.write(json.dumps(data) + "\n")
 
 
 def get_args():
   parser = argparse.ArgumentParser()
+  parser.add_argument("--mode", default=None, choices=("sst", "cfimdb"), help="Dataset to train on.")
+  
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=50)
   parser.add_argument("--patience", type=int, default=5)
@@ -377,8 +379,7 @@ def get_args():
   parser.add_argument("--exclude_sst", action='store_true')
   parser.add_argument("--exclude_cfimdb", action='store_true')
 
-  parser.add_argument("--sst_batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=64)
-  parser.add_argument("--cfimdb_batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
+  parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=64)
   parser.add_argument("--hidden_dropout_prob", type=float, default=0.1)
   parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
                       default=1e-5)
@@ -413,48 +414,20 @@ if __name__ == "__main__":
   args = get_args()
   seed_everything(args.seed)
   add_arguments(args)
-
-  ### SST
   
-  if not args.exclude_sst:
+  timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+  args.filepath=f'checkpoints/{args.model_size}-{args.mode}-classifier.pt'
+  args.train=f'data/ids-{args.mode}-train.csv'
+  args.dev=f'data/ids-{args.mode}-dev.csv'
+  args.test=f'data/ids-{args.mode}-test-student.csv'
+  args.dev_out=f"sentiment_results/{timestamp}/dev_out.csv"
+  args.test_out=f"sentiment_results/{timestamp}/test_out.csv"
+  args.summary_path=f"sentiment_results/sentiment_summaries.jsonl"
 
-    sst_args = copy.copy(args)
-    sst_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    sst_args.filepath=f'checkpoints/{args.model_size}-sst-classifier.pt'
-    sst_args.train='data/ids-sst-train.csv'
-    sst_args.dev='data/ids-sst-dev.csv'
-    sst_args.test='data/ids-sst-test-student.csv'
-    sst_args.dev_out=f"sentiment_results/{sst_timestamp}-sst/sst_dev_out.csv"
-    sst_args.test_out=f"sentiment_results/{sst_timestamp}-sst/sst_test_out.csv"
-    sst_args.summary_path=f"sentiment_results/{sst_timestamp}-sst/sst_summary.json"
-    sst_args.batch_size = args.sst_batch_size
+  print(f'Training Sentiment Classifier on {args.mode.upper()}...')
+  train(args)
+  flush_memory()
 
-    print('Training Sentiment Classifier on SST...')
-    train(sst_args)
-    flush_memory()
-
-    print('Evaluating on SST...')
-    test(sst_args)
-    flush_memory()
-
-  ### CFIMDB
-
-  if not args.exclude_cfimdb:
-      
-    cfimdb_args = copy.copy(args)
-    cfimdb_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    cfimdb_args.filepath=f'checkpoints/{args.model_size}-cfimdb-classifier.pt'
-    cfimdb_args.train='data/ids-cfimdb-train.csv'
-    cfimdb_args.dev='data/ids-cfimdb-dev.csv'
-    cfimdb_args.test='data/ids-cfimdb-test-student.csv'
-    cfimdb_args.dev_out=f"sentiment_results/{cfimdb_timestamp}-cfimdb/cfimdb_dev_out.csv"
-    cfimdb_args.test_out=f"sentiment_results/{cfimdb_timestamp}-cfimdb/cfimdb_test_out.csv"
-    cfimdb_args.summary_path=f"sentiment_results/{cfimdb_timestamp}-cfimdb/cfimdb_summary.json"
-    cfimdb_args.batch_size = args.cfimdb_batch_size
-
-    print('Training Sentiment Classifier on cfimdb...')
-    train(cfimdb_args)
-    flush_memory()
-    
-    print('Evaluating on cfimdb...')
-    test(cfimdb_args)
+  print(f'Evaluating on {args.mode.upper()}...')
+  test(args)
+  flush_memory()

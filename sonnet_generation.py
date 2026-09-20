@@ -378,7 +378,7 @@ def train(args):
 
   # Save training time
   sync_if_cuda()
-  args.train_time = time.time() - start
+  args.train_time = (time.time() - start) / 60
 
   # Save memory usage
   if args.use_gpu:
@@ -481,10 +481,9 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
       f.write(f"\n{sonnet[0]}\n")
       f.write(f"\n{sonnet[1]}\n")
 
-  with open(args.summary_path, "w") as f:
+  with open(args.summary_path, "a") as f:
     data = {"dev_chrf": total_chrf, **vars(args)}
-    json.dump(data, f, indent=2)
-
+    f.write(json.dumps(data) + "\n")
 
 def get_args():
   parser = argparse.ArgumentParser()
@@ -497,7 +496,7 @@ def get_args():
   parser.add_argument("--held_out_sonnet_test", type=str, default="data/sonnets_held_out.txt")
   parser.add_argument("--sonnet_dev_out", type=str, default=f"sonnet_results/{timestamp}/generated_sonnets_dev.txt")
   parser.add_argument("--sonnet_test_out", type=str, default=f"sonnet_results/{timestamp}/generated_sonnets_test.txt")
-  parser.add_argument("--summary_path", type=str, default=f"sonnet_results/{timestamp}/summary.json")
+  parser.add_argument("--summary_path", type=str, default=f"sonnet_results/sonnet_summaries.jsonl")
 
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=50)
@@ -545,7 +544,7 @@ def add_arguments(args):
 
 if __name__ == "__main__":
   args = get_args()
-  args.filepath = f'checkpoints/{args.model_size}-sonnet.pt'  # Model save path.
+  args.filepath = f'checkpoints/{args.model_size}-{args.generation_mode}-sonnet.pt'  # Model save path.
   seed_everything(args.seed)  # Fix the seed for reproducibility.
   if not args.generate_only:
     train(args)
