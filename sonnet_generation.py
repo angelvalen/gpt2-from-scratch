@@ -546,7 +546,7 @@ def add_arguments(args):
 
 if __name__ == "__main__":
   args = get_args()
-  args.filepath = f'checkpoints/{args.model_size}-{args.generation_mode}-sonnet.pt'  # Model save path.
+  args.filepath = f'checkpoints/{args.model_size}-{args.generation_method}-sonnet.pt'  # Model save path.
   seed_everything(args.seed)  # Fix the seed for reproducibility.
   if not args.generate_only:
     train(args)
