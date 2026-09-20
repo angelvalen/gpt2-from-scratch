@@ -210,7 +210,7 @@ def train(args):
     args.train_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
     args.train_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
 
-  plot_training(train_loss_history, dev_acc_history, metric_name="Accuracy")
+  plot_training(train_loss_history, dev_acc_history, "Accuracy", args.plot_path)
 
 
 @torch.no_grad()
@@ -289,6 +289,7 @@ def get_args():
   parser.add_argument("--para_dev_out", type=str, default=f"paraphrase_results/{timestamp}/para-dev-output.csv")
   parser.add_argument("--para_test_out", type=str, default=f"paraphrase_results/{timestamp}/para-test-output.csv")
   parser.add_argument("--summary_path", type=str, default=f"paraphrase_results/paraphrase_summaries.jsonl")
+  parser.add_argument("--plot_path", type=str, default=f"paraphrase_results/{timestamp}/training_evolution.png")
 
   parser.add_argument("--small_datasets", action="store_true",
                        help="If selected, cuts train, dev and test datasets to be a tenth of their lengths")

@@ -303,7 +303,7 @@ def train(args):
     args.train_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
     args.train_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
 
-  plot_training(train_loss_history, dev_acc_history, metric_name="Accuracy")
+  plot_training(train_loss_history, dev_acc_history, "Accuracy", args.plot_path)
   
 
 def test(args):
@@ -423,6 +423,7 @@ if __name__ == "__main__":
   args.dev_out=f"sentiment_results/{timestamp}/dev_out.csv"
   args.test_out=f"sentiment_results/{timestamp}/test_out.csv"
   args.summary_path=f"sentiment_results/sentiment_summaries.jsonl"
+  args.plot_path=f"sentiment_results/{timestamp}/training_evolution.png"
 
   print(f'Training Sentiment Classifier on {args.mode.upper()}...')
   train(args)

@@ -385,7 +385,7 @@ def train(args):
     args.train_peak_allocated_gb = torch.cuda.max_memory_allocated() / 1e9
     args.train_peak_reserved_gb = torch.cuda.max_memory_reserved() / 1e9
 
-  plot_training(train_loss_history, dev_chrf_history, metric_name="CHRF")
+  plot_training(train_loss_history, dev_chrf_history, "CHRF", args.plot_path)
 
 
 @torch.no_grad()
@@ -497,6 +497,7 @@ def get_args():
   parser.add_argument("--sonnet_dev_out", type=str, default=f"sonnet_results/{timestamp}/generated_sonnets_dev.txt")
   parser.add_argument("--sonnet_test_out", type=str, default=f"sonnet_results/{timestamp}/generated_sonnets_test.txt")
   parser.add_argument("--summary_path", type=str, default=f"sonnet_results/sonnet_summaries.jsonl")
+  parser.add_argument("--plot_path", type=str, default=f"sonnet_results/{timestamp}/training_evolution.png")
 
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=50)

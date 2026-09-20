@@ -202,7 +202,7 @@ def compute_chrf(held_out_reference, hypothesis, reference, beta=1):
   return chrf
 
 
-def plot_training(train_loss, dev_metric, metric_name):
+def plot_training(train_loss, dev_metric, metric_name, plot_path):
 
   best_epoch = np.argmax(dev_metric)
   epochs = range(len(train_loss))
@@ -231,4 +231,4 @@ def plot_training(train_loss, dev_metric, metric_name):
   ax[1].grid(True)
 
   plt.tight_layout()
-  plt.show()
+  plt.savefig(plot_path, dpi=300, bbox_inches="tight")
