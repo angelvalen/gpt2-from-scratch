@@ -11,6 +11,7 @@ import csv
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
+import torch.distributed as dist
 from transformers import GPT2Tokenizer
 from sklearn.metrics import f1_score, accuracy_score
 
@@ -18,8 +19,9 @@ from models.gpt2 import GPT2Model
 from optimizer import AdamW
 from evaluation import model_eval_sentiment, model_test_sentiment, plot_training
 from tqdm import tqdm
+from datasets import load_sentiment_data, SentimentDataset, SentimentTestDataset
 
-from utils import sync_if_cuda, flush_memory
+from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments
 import time
 from datetime import datetime
 import json
@@ -27,17 +29,6 @@ from pathlib import Path
 import copy
 
 TQDM_DISABLE = False
-
-
-# Fix the random seed.
-def seed_everything(seed=11711):
-  random.seed(seed)
-  np.random.seed(seed)
-  torch.manual_seed(seed)
-  torch.cuda.manual_seed(seed)
-  torch.cuda.manual_seed_all(seed)
-  torch.backends.cudnn.benchmark = False
-  torch.backends.cudnn.deterministic = True
 
 
 class GPT2SentimentClassifier(torch.nn.Module):
@@ -82,134 +73,14 @@ class GPT2SentimentClassifier(torch.nn.Module):
     return logits
 
 
-
-class SentimentDataset(Dataset):
-  def __init__(self, dataset, args):
-    self.dataset = dataset
-    self.p = args
-    self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-    self.tokenizer.pad_token = self.tokenizer.eos_token
-
-  def __len__(self):
-    return len(self.dataset)
-
-  def __getitem__(self, idx):
-    return self.dataset[idx]
-
-  def pad_data(self, data):
-    sents = [x[0] for x in data]
-    labels = [x[1] for x in data]
-    sent_ids = [x[2] for x in data]
-
-    encoding = self.tokenizer(sents, return_tensors='pt', padding=True, truncation=True)
-    token_ids = torch.LongTensor(encoding['input_ids'])
-    attention_mask = torch.LongTensor(encoding['attention_mask'])
-    labels = torch.LongTensor(labels)
-
-    return token_ids, attention_mask, labels, sents, sent_ids
-
-  def collate_fn(self, all_data):
-    token_ids, attention_mask, labels, sents, sent_ids = self.pad_data(all_data)
-
-    batched_data = {
-      'token_ids': token_ids,
-      'attention_mask': attention_mask,
-      'labels': labels,
-      'sents': sents,
-      'sent_ids': sent_ids
-    }
-
-    return batched_data
-
-
-class SentimentTestDataset(Dataset):
-  def __init__(self, dataset, args):
-    self.dataset = dataset
-    self.p = args
-    self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-    self.tokenizer.pad_token = self.tokenizer.eos_token
-
-  def __len__(self):
-    return len(self.dataset)
-
-  def __getitem__(self, idx):
-    return self.dataset[idx]
-
-  def pad_data(self, data):
-    sents = [x[0] for x in data]
-    sent_ids = [x[1] for x in data]
-
-    encoding = self.tokenizer(sents, return_tensors='pt', padding=True, truncation=True)
-    token_ids = torch.LongTensor(encoding['input_ids'])
-    attention_mask = torch.LongTensor(encoding['attention_mask'])
-
-    return token_ids, attention_mask, sents, sent_ids
-
-  def collate_fn(self, all_data):
-    token_ids, attention_mask, sents, sent_ids = self.pad_data(all_data)
-
-    batched_data = {
-      'token_ids': token_ids,
-      'attention_mask': attention_mask,
-      'sents': sents,
-      'sent_ids': sent_ids
-    }
-
-    return batched_data
-
-
-# Load the data: a list of (sentence, label).
-def load_data(filename, flag='train'):
-  num_labels = {}
-  data = []
-  if flag == 'test':
-    with open(filename, 'r') as fp:
-      for record in csv.DictReader(fp, delimiter='\t'):
-        sent = record['sentence'].lower().strip()
-        sent_id = record['id'].lower().strip()
-        data.append((sent, sent_id))
-  else:
-    with open(filename, 'r') as fp:
-      for record in csv.DictReader(fp, delimiter='\t'):
-        sent = record['sentence'].lower().strip()
-        sent_id = record['id'].lower().strip()
-        label = int(record['sentiment'].strip())
-        if label not in num_labels:
-          num_labels[label] = len(num_labels)
-        data.append((sent, label, sent_id))
-    print(f"load {len(data)} data from {filename}")
-
-  if flag == 'train':
-    return data, len(num_labels)
-  else:
-    return data
-
-
-def save_model(model, optimizer, args, filepath):
-
-  Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-  
-  save_info = {
-    'model': model.state_dict(),
-    'optim': optimizer.state_dict(),
-    'args': args,
-    'system_rng': random.getstate(),
-    'numpy_rng': np.random.get_state(),
-    'torch_rng': torch.random.get_rng_state(),
-  }
-
-  torch.save(save_info, filepath)
-  print(f"save the model to {filepath}")
-
-
 def train(args):
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
   if args.use_gpu:
     torch.cuda.reset_peak_memory_stats()
 
   # Create the data and its corresponding datasets and dataloader.
-  train_data, num_labels = load_data(args.train, 'train')
-  dev_data = load_data(args.dev, 'valid')
+  train_data, num_labels = load_sentiment_data(args.train, 'train')
+  dev_data = load_sentiment_data(args.dev, 'valid')
 
   train_dataset = SentimentDataset(train_data, args)
   dev_dataset = SentimentDataset(dev_data, args)
@@ -326,12 +197,12 @@ def test(args):
     model = model.to(device)
     print(f"load model from {args.filepath}")
 
-    dev_data = load_data(args.dev, 'valid')
+    dev_data = load_sentiment_data(args.dev, 'valid')
     dev_dataset = SentimentDataset(dev_data, args)
     dev_dataloader = DataLoader(dev_dataset, shuffle=False, batch_size=args.batch_size,
                                 collate_fn=dev_dataset.collate_fn)
 
-    test_data = load_data(args.test, 'test')
+    test_data = load_sentiment_data(args.test, 'test')
     test_dataset = SentimentTestDataset(test_data, args)
     test_dataloader = DataLoader(test_dataset, shuffle=False, batch_size=args.batch_size,
                                  collate_fn=test_dataset.collate_fn)
@@ -386,7 +257,7 @@ def get_args():
   parser.add_argument("--use_gpu", action='store_true')
 
   parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=64)
-  parser.add_argument("--grad_accum_steps", help='Accumulation steps for gradient updates, useful cfimbd', type=int, default=1)
+  parser.add_argument("--grad_accum_steps", help='Accumulation steps for gradient updates.', type=int, default=1)
   parser.add_argument("--hidden_dropout_prob", type=float, default=0.1)
   parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
                       default=1e-5)
@@ -399,29 +270,10 @@ def get_args():
   return args
 
 
-def add_arguments(args):
-  """Add arguments that are deterministic on model size."""
-  if args.model_size == 'gpt2':
-    args.d = 768
-    args.l = 12
-    args.num_heads = 12
-  elif args.model_size == 'gpt2-medium':
-    args.d = 1024
-    args.l = 24
-    args.num_heads = 16
-  elif args.model_size == 'gpt2-large':
-    args.d = 1280
-    args.l = 36
-    args.num_heads = 20
-  else:
-    raise Exception(f'{args.model_size} is not supported.')
-  return args
-
-
 if __name__ == "__main__":
   args = get_args()
   seed_everything(args.seed)
-  add_arguments(args)
+  add_size_arguments(args)
   
   timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
   args.filepath=f'checkpoints/{args.model_size}-{args.mode}-classifier.pt'

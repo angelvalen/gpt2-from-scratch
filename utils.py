@@ -18,6 +18,8 @@ import torch.nn as nn
 from torch import Tensor
 import fnmatch
 import gc
+import random
+import numpy as np
 
 __version__ = "4.0.0"
 _torch_version = importlib_metadata.version("torch")
@@ -368,3 +370,51 @@ def flush_memory():
   gc.collect()
   if torch.cuda.is_available():
       torch.cuda.empty_cache()
+
+
+# Fix the random seed.
+def seed_everything(seed=11711):
+  random.seed(seed)
+  np.random.seed(seed)
+  torch.manual_seed(seed)
+  torch.cuda.manual_seed(seed)
+  torch.cuda.manual_seed_all(seed)
+  torch.backends.cudnn.benchmark = False
+  torch.backends.cudnn.deterministic = True
+
+
+def save_model(model, optimizer, args, filepath):
+
+  Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+  
+  save_info = {
+    'model': model.state_dict(),
+    'optim': optimizer.state_dict(),
+    'args': args,
+    'system_rng': random.getstate(),
+    'numpy_rng': np.random.get_state(),
+    'torch_rng': torch.random.get_rng_state(),
+  }
+
+  torch.save(save_info, filepath)
+  print(f"save the model to {filepath}")
+
+
+def add_size_arguments(args):
+  """Add arguments that are deterministic on model size."""
+  if args.model_size == 'gpt2':
+    args.d = 768
+    args.l = 12
+    args.num_heads = 12
+  elif args.model_size == 'gpt2-medium':
+    args.d = 1024
+    args.l = 24
+    args.num_heads = 16
+  elif args.model_size == 'gpt2-large':
+    args.d = 1280
+    args.l = 36
+    args.num_heads = 20
+  else:
+    raise Exception(f'{args.model_size} is not supported.')
+  return args
+

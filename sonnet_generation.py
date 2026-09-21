@@ -28,7 +28,7 @@ from models.gpt2 import GPT2Model
 from optimizer import AdamW
 from evaluation import sonnets_eval, plot_training
 
-from utils import sync_if_cuda, flush_memory
+from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments
 import time
 from datetime import datetime
 import json
@@ -36,17 +36,6 @@ from pathlib import Path
 import gc
 
 TQDM_DISABLE = False
-
-
-# Fix the random seed.
-def seed_everything(seed=11711):
-  random.seed(seed)
-  np.random.seed(seed)
-  torch.manual_seed(seed)
-  torch.cuda.manual_seed(seed)
-  torch.cuda.manual_seed_all(seed)
-  torch.backends.cudnn.benchmark = False
-  torch.backends.cudnn.deterministic = True
 
 
 class SonnetGPT(nn.Module):
@@ -245,23 +234,6 @@ class SonnetGPT(nn.Module):
     return best_beam, generated_output
         
 
-def save_model(model, optimizer, args, filepath):
-
-  Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-  
-  save_info = {
-    'model': model.state_dict(),
-    'optim': optimizer.state_dict(),
-    'args': args,
-    'system_rng': random.getstate(),
-    'numpy_rng': np.random.get_state(),
-    'torch_rng': torch.random.get_rng_state(),
-  }
-
-  torch.save(save_info, filepath)
-  print(f"save the model to {filepath}")
-
-
 def train(args):
   """Train GPT-2 for paraphrase detection on the Quora dataset."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
@@ -278,12 +250,13 @@ def train(args):
   held_out_sonnet_dataset = SonnetsDataset(args.held_out_sonnet_dev)
   held_out_labels_dataset = SonnetsDataset(args.held_out_sonnet_dev_labels)
 
-  args = add_arguments(args)
+  args = add_size_arguments(args)
   model = SonnetGPT(args)
   model = model.to(device)
 
   lr = args.lr
   optimizer = AdamW(model.parameters(), lr=lr, weight_decay=args.weight_decay)
+  optimizer.zero_grad()
   best_chrf = 0
   args.best_epoch = 0
   epochs_without_improvement = 0
@@ -306,9 +279,6 @@ def train(args):
       b_ids = b_ids.to(device)
       b_mask = b_mask.to(device)
 
-      # Compute the loss, gradients, and update the model's parameters.
-      optimizer.zero_grad()
-
       # Mixed Precision training on GPU
       if args.use_gpu:
         with torch.autocast(device_type=device.type, dtype=torch.float16):
@@ -317,8 +287,12 @@ def train(args):
           labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
           loss = F.cross_entropy(logits, labels, reduction='mean')
         scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+
+        # Gradient accumulation
+        if (num_batches + 1) % args.grad_accum_steps == 0:
+          scaler.step(optimizer)
+          optimizer.zero_grad()
+          scaler.update()
 
       else:
         logits, _ = model(b_ids, b_mask)
@@ -326,7 +300,11 @@ def train(args):
         labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
         loss = F.cross_entropy(logits, labels, reduction='mean')
         loss.backward()
-        optimizer.step()
+        
+        # Gradient accumulation
+        if (num_batches + 1) % args.grad_accum_steps == 0:
+          optimizer.step()
+          optimizer.zero_grad()
 
       train_loss += loss.item()
       num_batches += 1
@@ -512,6 +490,7 @@ def get_args():
                       default=0.9)
   parser.add_argument("--num_beams", type=int, help="Number of beams for beam search generation.", default=5)
   parser.add_argument("--length_penalty", type=float, help="Length penalty for beam search scoring.", default=0.6)
+  parser.add_argument("--grad_accum_steps", help='Accumulation steps for gradient updates.', type=int, default=1)
 
   parser.add_argument("--batch_size", help='The training batch size.', type=int, default=8)
   parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
@@ -522,25 +501,6 @@ def get_args():
   parser.add_argument("--generate_only", action="store_true", help="If applied, program skips training and loads saved weights.")
 
   args = parser.parse_args()
-  return args
-
-
-def add_arguments(args):
-  """Add arguments that are deterministic on model size."""
-  if args.model_size == 'gpt2':
-    args.d = 768
-    args.l = 12
-    args.num_heads = 12
-  elif args.model_size == 'gpt2-medium':
-    args.d = 1024
-    args.l = 24
-    args.num_heads = 16
-  elif args.model_size == 'gpt2-large':
-    args.d = 1280
-    args.l = 36
-    args.num_heads = 20
-  else:
-    raise Exception(f'{args.model_size} is not supported.')
   return args
 
 

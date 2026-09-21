@@ -32,23 +32,13 @@ from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
 
-from utils import sync_if_cuda, flush_memory
+from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments
 import time 
 from datetime import datetime
 import json
 from pathlib import Path
 
 TQDM_DISABLE = False
-
-# Fix the random seed.
-def seed_everything(seed=11711):
-  random.seed(seed)
-  np.random.seed(seed)
-  torch.manual_seed(seed)
-  torch.cuda.manual_seed(seed)
-  torch.cuda.manual_seed_all(seed)
-  torch.backends.cudnn.benchmark = False
-  torch.backends.cudnn.deterministic = True
 
 
 class ParaphraseGPT(nn.Module):
@@ -89,23 +79,6 @@ class ParaphraseGPT(nn.Module):
     return logits
 
 
-def save_model(model, optimizer, args, filepath):
-
-  Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-
-  save_info = {
-    'model': model.state_dict(),
-    'optim': optimizer.state_dict(),
-    'args': args,
-    'system_rng': random.getstate(),
-    'numpy_rng': np.random.get_state(),
-    'torch_rng': torch.random.get_rng_state(),
-  }
-
-  torch.save(save_info, filepath)
-  print(f"save the model to {filepath}")
-
-
 def train(args):
   """Train GPT-2 for paraphrase detection on the Quora dataset."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
@@ -127,12 +100,13 @@ def train(args):
   para_dev_dataloader = DataLoader(para_dev_data, shuffle=False, batch_size=args.batch_size,
                                    collate_fn=para_dev_data.collate_fn)
 
-  args = add_arguments(args)
+  args = add_size_arguments(args)
   model = ParaphraseGPT(args)
   model = model.to(device)
 
   lr = args.lr
   optimizer = AdamW(model.parameters(), lr=lr, weight_decay=args.weight_decay)
+  optimizer.zero_grad()
   best_dev_acc = 0
   args.best_epoch = 0
   epochs_without_improvement = 0
@@ -156,9 +130,6 @@ def train(args):
       b_mask = b_mask.to(device)
       labels = labels.to(device)
 
-      # Compute the loss, gradients, and update the model's parameters.
-      optimizer.zero_grad()
-
       # Mixed Precision training on GPU
       if args.use_gpu:
         with torch.autocast(device_type=device.type, dtype=torch.float16):
@@ -166,14 +137,23 @@ def train(args):
           preds = torch.argmax(logits, dim=1)
           loss = F.cross_entropy(logits, labels, reduction='mean')
         scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+
+        # Gradient accumulation
+        if (num_batches + 1) % args.grad_accum_steps == 0:
+          scaler.step(optimizer)
+          optimizer.zero_grad()
+          scaler.update()
+
       else:
         logits = model(b_ids, b_mask)
         preds = torch.argmax(logits, dim=1)
         loss = F.cross_entropy(logits, labels, reduction='mean')
         loss.backward()
-        optimizer.step()
+
+        # Gradient accumulation
+        if (num_batches + 1) % args.grad_accum_steps == 0:
+          optimizer.step()
+          optimizer.zero_grad()
 
       train_loss += loss.item()
       num_batches += 1
@@ -306,31 +286,13 @@ def get_args():
                       help="The model size as specified on hugging face. DO NOT use the xl model.",
                       choices=['gpt2', 'gpt2-medium', 'gpt2-large'], default='gpt2')
   parser.add_argument("--paraphrase_dropout_prob", type=float, default=0.1)
+  parser.add_argument("--grad_accum_steps", help='Accumulation steps for gradient updates.', type=int, default=1)
 
   parser.add_argument("--fine-tune-mode", type=str,
                       help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well',
                       choices=('last-linear-layer', 'full-model'), default="last-linear-layer")
   
   args = parser.parse_args()
-  return args
-
-
-def add_arguments(args):
-  """Add arguments that are deterministic on model size."""
-  if args.model_size == 'gpt2':
-    args.d = 768
-    args.l = 12
-    args.num_heads = 12
-  elif args.model_size == 'gpt2-medium':
-    args.d = 1024
-    args.l = 24
-    args.num_heads = 16
-  elif args.model_size == 'gpt2-large':
-    args.d = 1280
-    args.l = 36
-    args.num_heads = 20
-  else:
-    raise Exception(f'{args.model_size} is not supported.')
   return args
 
 
