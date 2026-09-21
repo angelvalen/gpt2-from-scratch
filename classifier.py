@@ -255,6 +255,7 @@ def get_args():
                       help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well',
                       choices=('last-linear-layer', 'full-model'), default="last-linear-layer")
   parser.add_argument("--use_gpu", action='store_true')
+  parser.add_argument("--keep_model_checkpoint", action='store_true')
 
   parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=64)
   parser.add_argument("--grad_accum_steps", help='Accumulation steps for gradient updates.', type=int, default=1)
@@ -285,10 +286,13 @@ if __name__ == "__main__":
   args.summary_path=f"sentiment_results/sentiment_summaries.jsonl"
   args.plot_path=f"sentiment_results/{timestamp}/training_evolution.png"
 
-  print(f'Training Sentiment Classifier on {args.mode.upper()}...')
+  print(f'\n ==== Training Sentiment Classifier on {args.mode.upper()}... ====\n')
   train(args)
   flush_memory()
 
-  print(f'Evaluating on {args.mode.upper()}...')
+  print(f'\nEvaluating sentiment analysis on {args.mode.upper()}...')
   test(args)
   flush_memory()
+
+  if not args.keep_model_checkpoint:
+    Path(args.filepath).unlink()

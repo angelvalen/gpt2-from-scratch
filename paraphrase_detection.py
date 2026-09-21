@@ -278,6 +278,7 @@ def get_args():
   parser.add_argument("--epochs", type=int, default=50)
   parser.add_argument("--patience", type=int, default=5)
   parser.add_argument("--use_gpu", action='store_true')
+  parser.add_argument("--keep_model_checkpoint", action='store_true')
 
   parser.add_argument("--batch_size", type=int, default=8)
   parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
@@ -300,6 +301,10 @@ if __name__ == "__main__":
   args = get_args()
   args.filepath = f'checkpoints/{args.model_size}-paraphrase.pt'  # Save path.
   seed_everything(args.seed)  # Fix the seed for reproducibility.
+  print("\n==== Training Paraphrase Detection... ====\n")
   train(args)
   flush_memory()
+  print("\nEvaluating paraphrase detection...")
   test(args)
+  if not args.keep_model_checkpoint:
+    Path(args.filepath).unlink()

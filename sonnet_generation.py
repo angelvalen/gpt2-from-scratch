@@ -481,6 +481,7 @@ def get_args():
   parser.add_argument("--epochs", type=int, default=50)
   parser.add_argument("--patience", type=int, default=5)
   parser.add_argument("--use_gpu", action='store_true')
+  parser.add_argument("--keep_model_checkpoint", action='store_true')
 
   # Generation parameters.
   parser.add_argument("--generation_method", type=str, help="Generation method for performing sonnet generation.",
@@ -509,6 +510,10 @@ if __name__ == "__main__":
   args.filepath = f'checkpoints/{args.model_size}-{args.generation_method}-sonnet.pt'  # Model save path.
   seed_everything(args.seed)  # Fix the seed for reproducibility.
   if not args.generate_only:
+    print("\n==== Training Sonnet Generation ====\n")
     train(args)
     flush_memory()
+  print("\nGenerating sonnets...")
   generate_submission_sonnets(args)
+  if not args.keep_model_checkpoint:
+    Path(args.filepath).unlink()
