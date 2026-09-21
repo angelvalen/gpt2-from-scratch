@@ -135,7 +135,7 @@ def train(args):
         with torch.autocast(device_type=device.type, dtype=torch.float16):
           logits = model(b_ids, b_mask)
           preds = torch.argmax(logits, dim=1)
-          loss = F.cross_entropy(logits, labels, reduction='mean')
+          loss = F.cross_entropy(logits, labels, reduction='mean') / args.grad_accum_steps
         scaler.scale(loss).backward()
 
         # Gradient accumulation
@@ -147,7 +147,7 @@ def train(args):
       else:
         logits = model(b_ids, b_mask)
         preds = torch.argmax(logits, dim=1)
-        loss = F.cross_entropy(logits, labels, reduction='mean')
+        loss = F.cross_entropy(logits, labels, reduction='mean') / args.gras_accum_steps
         loss.backward()
 
         # Gradient accumulation
@@ -158,7 +158,8 @@ def train(args):
       train_loss += loss.item()
       num_batches += 1
 
-    train_loss = train_loss / num_batches
+    # Loss has been divideb by acumm_steps to normalize the gradient that will acumulate, so now need to rescale
+    train_loss = train_loss * args.grad_accum_steps / num_batches
     train_loss_history.append(train_loss)
 
     dev_acc, dev_f1, *_ = model_eval_paraphrase(para_dev_dataloader, model, device)

@@ -127,7 +127,7 @@ def train(args):
       if args.use_gpu:
         with torch.autocast(device_type=device.type, dtype=torch.float16):
           logits = model(b_ids, b_mask)
-          loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+          loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size / args.grad_accum_steps
         scaler.scale(loss).backward()
 
         # Gradient accumulation
@@ -138,7 +138,7 @@ def train(args):
 
       else:
         logits = model(b_ids, b_mask)
-        loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+        loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size / args.grad_accum_steps
         loss.backward()
 
         # Gradient accumulation
@@ -149,7 +149,8 @@ def train(args):
       train_loss += loss.item()
       num_batches += 1
 
-    train_loss = train_loss / (num_batches)
+    # Loss has been divideb by acumm_steps to normalize the gradient that will acumulate, so now need to rescale
+    train_loss = train_loss * args.grad_accum_steps / num_batches
     train_loss_history.append(train_loss)
 
     train_acc, train_f1, *_ = model_eval_sentiment(train_dataloader, model, device)

@@ -285,7 +285,7 @@ def train(args):
           logits, _ = model(b_ids, b_mask)
           logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
           labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
-          loss = F.cross_entropy(logits, labels, reduction='mean')
+          loss = F.cross_entropy(logits, labels, reduction='mean') / args.grad_accum_steps
         scaler.scale(loss).backward()
 
         # Gradient accumulation
@@ -298,7 +298,7 @@ def train(args):
         logits, _ = model(b_ids, b_mask)
         logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
         labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
-        loss = F.cross_entropy(logits, labels, reduction='mean')
+        loss = F.cross_entropy(logits, labels, reduction='mean') / args.grad_accum_steps
         loss.backward()
         
         # Gradient accumulation
@@ -309,7 +309,8 @@ def train(args):
       train_loss += loss.item()
       num_batches += 1
 
-    train_loss = train_loss / num_batches
+    # Loss has been divideb by acumm_steps to normalize the gradient that will acumulate, so now need to rescale
+    train_loss = train_loss * args.grad_accum_steps / num_batches
     train_loss_history.append(train_loss)
 
     print("Evaluating on dev held out sonnets") ### EVALUATION CODE IS NOT BATCHED SINCE MODEL.GENERATE() ISNT ORIGINALLY BATCHED
