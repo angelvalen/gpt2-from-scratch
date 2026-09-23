@@ -3,7 +3,7 @@ torchvision
 torchaudio
 tqdm==4.58.0
 requests==2.25.1
-importlib-metadata==3.7.0
+importlib_metadata>=4.13.0
 filelock==3.0.12
 scikit-learn
 tokenizers==0.20
@@ -13,3 +13,6 @@ transformers==4.46.3
 sacrebleu==2.5.1
 numpy
 matplotlib
+peft
+torchao>=0.16.0
+huggingface_hub>=0.25.0

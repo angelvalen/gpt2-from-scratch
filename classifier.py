@@ -21,7 +21,7 @@ from evaluation import model_eval_sentiment, model_test_sentiment, plot_training
 from tqdm import tqdm
 from datasets import load_sentiment_data, SentimentDataset, SentimentTestDataset
 
-from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments
+from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments, setup_finetune_mode, print_trainable_params 
 import time
 from datetime import datetime
 import json
@@ -44,18 +44,12 @@ class GPT2SentimentClassifier(torch.nn.Module):
     self.num_labels = args.num_labels
     self.gpt = GPT2Model.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
 
-    # Pretrain mode does not require updating GPT paramters.
-    assert args.fine_tune_mode in ["last-linear-layer", "full-model"]
-    for param in self.gpt.parameters():
-      if args.fine_tune_mode == 'last-linear-layer':
-        param.requires_grad = False
-      elif args.fine_tune_mode == 'full-model':
-        param.requires_grad = True
-
     ### TODO: Create any instance variables you need to classify the sentiment of BERT embeddings.
     ### YOUR CODE HERE
     self.dropout = torch.nn.Dropout(args.hidden_dropout_prob)
     self.projection = torch.nn.Linear(args.d, args.num_labels)
+    
+    self.gpt = setup_finetune_mode(self.gpt, args)
 
 
   def forward(self, input_ids, attention_mask):
@@ -95,9 +89,11 @@ def train(args):
 
   model = GPT2SentimentClassifier(args)
   model = model.to(device)
+  print_trainable_params(model)
 
   lr = args.lr
-  optimizer = AdamW(model.parameters(), lr=lr, weight_decay=args.weight_decay)
+  optimizer = AdamW([p for p in model.parameters() if p.requires_grad],
+                     lr=lr, weight_decay=args.weight_decay)
   optimizer.zero_grad()
   best_dev_acc = 0
   args.best_epoch = 0
@@ -248,25 +244,31 @@ def test(args):
 def get_args():
   parser = argparse.ArgumentParser()
   parser.add_argument("--mode", default=None, choices=("sst", "cfimdb"), help="Dataset to train on.")
+  parser.add_argument("--hidden_dropout_prob", type=float, default=0.1)
   
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=50)
   parser.add_argument("--patience", type=int, default=5)
   parser.add_argument("--fine-tune-mode", type=str,
-                      help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well',
-                      choices=('last-linear-layer', 'full-model'), default="last-linear-layer")
+                      help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well; lora: use LoRA adapters',
+                      choices=('last-linear-layer', 'full-model', 'lora'), default="last-linear-layer")
   parser.add_argument("--use_gpu", action='store_true')
   parser.add_argument("--keep_model_checkpoint", action='store_true')
 
   parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=64)
   parser.add_argument("--grad_accum_steps", help='Accumulation steps for gradient updates.', type=int, default=1)
-  parser.add_argument("--hidden_dropout_prob", type=float, default=0.1)
   parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
                       default=1e-5)
   parser.add_argument("--weight_decay", type=float, default=0.0)
   parser.add_argument("--model_size", type=str,
                       help="The model size as specified on hugging face. DO NOT use the xl model.",
                       choices=['gpt2', 'gpt2-medium', 'gpt2-large'], default='gpt2')
+  # LoRA config
+  parser.add_argument("--lora_r", type=int, default=8)
+  parser.add_argument("--lora_alpha", type=int, default=16)
+  parser.add_argument("--lora_dropout", type=float, default=0.05)
+  parser.add_argument("--lora_target_modules", nargs="+", default=["query", "key", "value", "attention_dense"])
+  parser.add_argument("--lora_bias", type=str, default="none", choices=["none", "all", "lora_only"])
 
   args = parser.parse_args()
   return args
@@ -278,7 +280,7 @@ if __name__ == "__main__":
   add_size_arguments(args)
   
   timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-  args.filepath=f'checkpoints/{args.model_size}-{args.mode}-classifier.pt'
+  args.filepath=f'checkpoints/{args.model_size}-{args.mode}-{args.fine_tune_mode}-classifier.pt'
   args.train=f'data/ids-{args.mode}-train.csv'
   args.dev=f'data/ids-{args.mode}-dev.csv'
   args.test=f'data/ids-{args.mode}-test-student.csv'

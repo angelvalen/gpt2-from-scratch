@@ -28,7 +28,7 @@ from models.gpt2 import GPT2Model
 from optimizer import AdamW
 from evaluation import sonnets_eval, plot_training
 
-from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments
+from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments, setup_finetune_mode, print_trainable_params 
 import time
 from datetime import datetime
 import json
@@ -47,9 +47,7 @@ class SonnetGPT(nn.Module):
     self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
     self.tokenizer.pad_token = self.tokenizer.eos_token
 
-    # By default, fine-tune the full model. TODO: this is maybe not idea.
-    for param in self.gpt.parameters():
-      param.requires_grad = True
+    self.gpt = setup_finetune_mode(self.gpt, args)
 
   def forward(self, input_ids, attention_mask, kv_cache=None):
     """
@@ -253,9 +251,11 @@ def train(args):
   args = add_size_arguments(args)
   model = SonnetGPT(args)
   model = model.to(device)
+  print_trainable_params(model)
 
   lr = args.lr
-  optimizer = AdamW(model.parameters(), lr=lr, weight_decay=args.weight_decay)
+  optimizer = AdamW([p for p in model.parameters() if p.requires_grad],
+                     lr=lr, weight_decay=args.weight_decay)
   optimizer.zero_grad()
   best_chrf = 0
   args.best_epoch = 0
@@ -498,17 +498,26 @@ def get_args():
   parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
   parser.add_argument("--weight_decay", type=float, default=0.0)
   parser.add_argument("--model_size", type=str, help="The model size as specified on hugging face.",
-                      choices=['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'], default='gpt2')
+                      choices=['gpt2', 'gpt2-medium', 'gpt2-large'], default='gpt2')
   
   parser.add_argument("--generate_only", action="store_true", help="If applied, program skips training and loads saved weights.")
-
+# LoRA config
+  parser.add_argument("--lora_r", type=int, default=8)
+  parser.add_argument("--lora_alpha", type=int, default=16)
+  parser.add_argument("--lora_dropout", type=float, default=0.05)
+  parser.add_argument("--lora_target_modules", nargs="+", default=["query", "key", "value", "attention_dense"])
+  parser.add_argument("--lora_bias", type=str, default="none", choices=["none", "all", "lora_only"])
+  parser.add_argument("--fine-tune-mode", type=str,
+                      help='full-model: GPT parameters are updated as well; lora: use LoRA adapters',
+                      choices=('full-model', 'lora'), default="full-model")
+  
   args = parser.parse_args()
   return args
 
 
 if __name__ == "__main__":
   args = get_args()
-  args.filepath = f'checkpoints/{args.model_size}-{args.generation_method}-sonnet.pt'  # Model save path.
+  args.filepath = f'checkpoints/{args.model_size}-{args.generation_method}-{args.fine_tune_mode}-sonnet.pt'  # Model save path.
   seed_everything(args.seed)  # Fix the seed for reproducibility.
   if not args.generate_only:
     print("\n==== Training Sonnet Generation ====\n")

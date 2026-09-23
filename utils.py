@@ -21,6 +21,8 @@ import gc
 import random
 import numpy as np
 
+from peft import LoraConfig, get_peft_model
+
 __version__ = "4.0.0"
 _torch_version = importlib_metadata.version("torch")
 
@@ -418,3 +420,32 @@ def add_size_arguments(args):
     raise Exception(f'{args.model_size} is not supported.')
   return args
 
+
+def setup_finetune_mode(gpt, args):
+  assert args.fine_tune_mode in ["last-linear-layer", "full-model", "lora"]  # <-- CHANGED
+  if args.fine_tune_mode == "lora":
+      lora_config = LoraConfig(
+          r=args.lora_r,
+          lora_alpha=args.lora_alpha,
+          target_modules=args.lora_target_modules,
+          lora_dropout=args.lora_dropout,
+          bias=args.lora_bias,
+      )
+      gpt = get_peft_model(gpt, lora_config)
+  else:
+      for param in gpt.parameters():
+          if args.fine_tune_mode == 'last-linear-layer':
+              param.requires_grad = False
+          elif args.fine_tune_mode == 'full-model':
+              param.requires_grad = True
+  return gpt
+
+
+def print_trainable_params(model):
+  trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+  total = sum(p.numel() for p in model.parameters())
+  print(f"Trainable params: {trainable:,} / {total:,} ({100*trainable/total:.2f}%)")
+
+
+def parse_common_arguments(parser):
+  raise NotImplementedError

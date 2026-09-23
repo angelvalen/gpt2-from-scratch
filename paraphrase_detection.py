@@ -32,7 +32,7 @@ from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
 
-from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments
+from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments, setup_finetune_mode, print_trainable_params 
 import time 
 from datetime import datetime
 import json
@@ -50,13 +50,7 @@ class ParaphraseGPT(nn.Module):
     self.paraphrase_detection_head = nn.Linear(args.d, 2)  # Paraphrase detection has two outputs: 1 (yes) or 0 (no).
     self.paraphrase_dropout = nn.Dropout(args.paraphrase_dropout_prob)
 
-    # Choos to fine-tune full model or just last layer
-    assert args.fine_tune_mode in ["last-linear-layer", "full-model"]
-    for param in self.gpt.parameters():
-      if args.fine_tune_mode == 'last-linear-layer':
-        param.requires_grad = False
-      elif args.fine_tune_mode == 'full-model':
-        param.requires_grad = True
+    self.gpt = setup_finetune_mode(self.gpt, args)
 
   def forward(self, input_ids, attention_mask):
     """
@@ -103,9 +97,11 @@ def train(args):
   args = add_size_arguments(args)
   model = ParaphraseGPT(args)
   model = model.to(device)
+  print_trainable_params(model)
 
   lr = args.lr
-  optimizer = AdamW(model.parameters(), lr=lr, weight_decay=args.weight_decay)
+  optimizer = AdamW([p for p in model.parameters() if p.requires_grad],
+                     lr=lr, weight_decay=args.weight_decay)
   optimizer.zero_grad()
   best_dev_acc = 0
   args.best_epoch = 0
@@ -291,16 +287,23 @@ def get_args():
   parser.add_argument("--grad_accum_steps", help='Accumulation steps for gradient updates.', type=int, default=1)
 
   parser.add_argument("--fine-tune-mode", type=str,
-                      help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well',
-                      choices=('last-linear-layer', 'full-model'), default="last-linear-layer")
-  
+                      help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well; lora: use LoRA adapters',
+                      choices=('last-linear-layer', 'full-model', 'lora'), default="last-linear-layer")
+  # LoRA config
+  parser.add_argument("--lora_r", type=int, default=8)
+  parser.add_argument("--lora_alpha", type=int, default=16)
+  parser.add_argument("--lora_dropout", type=float, default=0.05)
+  parser.add_argument("--lora_target_modules", nargs="+", default=["query", "key", "value", "attention_dense"])
+  parser.add_argument("--lora_bias", type=str, default="none", choices=["none", "all", "lora_only"])
+
+
   args = parser.parse_args()
   return args
 
 
 if __name__ == "__main__":
   args = get_args()
-  args.filepath = f'checkpoints/{args.model_size}-paraphrase.pt'  # Save path.
+  args.filepath = f'checkpoints/{args.model_size}-{args.fine_tune_mode}-paraphrase.pt'  # Save path.
   seed_everything(args.seed)  # Fix the seed for reproducibility.
   print("\n==== Training Paraphrase Detection... ====\n")
   train(args)
