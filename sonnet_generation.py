@@ -35,8 +35,7 @@ import json
 from pathlib import Path
 import gc
 
-TQDM_DISABLE = False
-
+TQDM_DISABLE = True
 
 class SonnetGPT(nn.Module):
   """Your GPT-2 Model designed for sonnet generation."""

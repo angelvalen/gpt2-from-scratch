@@ -38,8 +38,7 @@ from datetime import datetime
 import json
 from pathlib import Path
 
-TQDM_DISABLE = False
-
+TQDM_DISABLE = True
 
 class ParaphraseGPT(nn.Module):
   """Your GPT-2 Model designed for paraphrase detection."""

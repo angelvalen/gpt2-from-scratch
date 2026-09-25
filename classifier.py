@@ -28,7 +28,7 @@ import json
 from pathlib import Path
 import copy
 
-TQDM_DISABLE = False
+TQDM_DISABLE = True
 
 
 class GPT2SentimentClassifier(torch.nn.Module):

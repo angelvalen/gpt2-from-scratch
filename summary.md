@@ -47,3 +47,18 @@ Epochs 50 with 5 patience for all
 | Sonnets | Full model | 1e-5 | 8 | 0.1 |
 | Sonnets (decoding) | Top p | temp 0.8–0.9 | top_p 0.9 | - | 24.02 | 428 | 36
 | Sonnets (decoding) | Beam search | beams 5 | len penalty 0.6 | - | 14.41 | - | 48
+
+
+... been lot of changes ... have to review whats up here ...
+
+# size x fine-tune-mode 
+Batch size per task:
+sst: 32
+cfimdb: 8
+paraphrase: 32
+sonnet: 4
+
+Lr per fine-tune-mode:
+LoRA: 1e-4
+Full model: 1e-5
+last-linear-layer: 1e-3
