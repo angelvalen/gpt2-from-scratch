@@ -290,8 +290,14 @@ def train(args):
         with torch.autocast(device_type=device.type, dtype=torch.float16):
           logits, _ = model(b_ids, b_mask)
           logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
-          labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
-          loss = F.cross_entropy(logits, labels, reduction='mean')
+
+          #labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
+
+          labels = b_ids[:, 1:].contiguous()          # aquí labels todavía contiene 50256 en las posiciones de padding
+          mask = b_mask[:, 1:].contiguous()            # 0 en esas mismas posiciones
+          labels = labels.masked_fill(mask == 0, -100).flatten() # ahora sí, esas posiciones pasan a valer -100
+
+          loss = F.cross_entropy(logits, labels, reduction='mean') # ignora index -100 por default
         train_loss += loss.item()
         loss /= grad_normalizer
         scaler.scale(loss).backward()
