@@ -21,7 +21,7 @@ from evaluation import model_eval_sentiment, model_test_sentiment, plot_training
 from tqdm import tqdm
 from datasets import load_sentiment_data, SentimentDataset, SentimentTestDataset
 
-from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments, setup_finetune_mode, print_trainable_params 
+from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments, setup_finetune_mode, get_trainable_params 
 import time
 from datetime import datetime
 import json
@@ -89,7 +89,7 @@ def train(args):
 
   model = GPT2SentimentClassifier(args)
   model = model.to(device)
-  print_trainable_params(model)
+  get_trainable_params(model, args)
 
   lr = args.lr
   optimizer = AdamW([p for p in model.parameters() if p.requires_grad],
@@ -101,6 +101,9 @@ def train(args):
   scaler = torch.amp.GradScaler('cuda', enabled=args.use_gpu)
   train_loss_history = []
   dev_acc_history = []
+
+  total_batches = len(train_dataloader)
+  uneven_batches = total_batches % args.grad_accum_steps
 
   # Run for the specified number of epochs.
   sync_if_cuda()
@@ -118,35 +121,40 @@ def train(args):
       b_mask = b_mask.to(device)
       b_labels = b_labels.to(device)
 
+      is_last_batch = num_batches + 1 == total_batches
+      step_gradient = (num_batches + 1) % args.grad_accum_steps == 0 or is_last_batch
+      grad_normalizer = uneven_batches if is_last_batch and uneven_batches else args.grad_accum_steps
 
       # Mixed Precision training on GPU
       if args.use_gpu:
         with torch.autocast(device_type=device.type, dtype=torch.float16):
           logits = model(b_ids, b_mask)
-          loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size / args.grad_accum_steps
+          loss = F.cross_entropy(logits, b_labels.view(-1), reduction="mean")
+        train_loss += loss.item()
+        loss /= grad_normalizer
         scaler.scale(loss).backward()
 
         # Gradient accumulation
-        if (num_batches + 1) % args.grad_accum_steps == 0:
+        if step_gradient:
           scaler.step(optimizer)
           optimizer.zero_grad()
           scaler.update()
 
       else:
         logits = model(b_ids, b_mask)
-        loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size / args.grad_accum_steps
+        loss = F.cross_entropy(logits, b_labels.view(-1), reduction="mean")
+        train_loss += loss.item()
+        loss /= grad_normalizer
         loss.backward()
 
         # Gradient accumulation
-        if (num_batches + 1) % args.grad_accum_steps == 0:
+        if step_gradient:
           optimizer.step()
           optimizer.zero_grad()
 
-      train_loss += loss.item()
       num_batches += 1
 
-    # Loss has been divideb by acumm_steps to normalize the gradient that will acumulate, so now need to rescale
-    train_loss = train_loss * args.grad_accum_steps / num_batches
+    train_loss = train_loss / num_batches
     train_loss_history.append(train_loss)
 
     train_acc, train_f1, *_ = model_eval_sentiment(train_dataloader, model, device)
@@ -157,8 +165,12 @@ def train(args):
     if dev_acc > best_dev_acc:
       best_dev_acc = dev_acc
       args.best_epoch = epoch
-      save_model(model, optimizer, args, args.filepath)
       epochs_without_improvement = 0 
+      # Save time until best epoch
+      sync_if_cuda()
+      args.best_epoch_time = (time.time() - start) / 60
+      
+      save_model(model, optimizer, args, args.filepath)
 
     else:
       epochs_without_improvement += 1

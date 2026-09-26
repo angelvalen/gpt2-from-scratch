@@ -422,7 +422,7 @@ def add_size_arguments(args):
 
 
 def setup_finetune_mode(gpt, args):
-  assert args.fine_tune_mode in ["last-linear-layer", "full-model", "lora"]  # <-- CHANGED
+  assert args.fine_tune_mode in ["last-linear-layer", "full-model", "lora"]
   if args.fine_tune_mode == "lora":
       lora_config = LoraConfig(
           r=args.lora_r,
@@ -441,10 +441,12 @@ def setup_finetune_mode(gpt, args):
   return gpt
 
 
-def print_trainable_params(model):
+def get_trainable_params(model, args):
   trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
   total = sum(p.numel() for p in model.parameters())
   print(f"Trainable params: {trainable:,} / {total:,} ({100*trainable/total:.2f}%)")
+  args.trainable_params = trainable
+  args.total_params = total
 
 
 def parse_common_arguments(parser):

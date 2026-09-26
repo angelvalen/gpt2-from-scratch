@@ -28,7 +28,7 @@ from models.gpt2 import GPT2Model
 from optimizer import AdamW
 from evaluation import sonnets_eval, plot_training
 
-from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments, setup_finetune_mode, print_trainable_params 
+from utils import sync_if_cuda, flush_memory, seed_everything, save_model, add_size_arguments, setup_finetune_mode, get_trainable_params 
 import time
 from datetime import datetime
 import json
@@ -250,7 +250,7 @@ def train(args):
   args = add_size_arguments(args)
   model = SonnetGPT(args)
   model = model.to(device)
-  print_trainable_params(model)
+  get_trainable_params(model, args)
 
   lr = args.lr
   optimizer = AdamW([p for p in model.parameters() if p.requires_grad],
@@ -262,6 +262,9 @@ def train(args):
   scaler = torch.amp.GradScaler('cuda', enabled=args.use_gpu)
   train_loss_history = []
   dev_chrf_history = []
+
+  total_batches = len(sonnet_dataloader)
+  uneven_batches = total_batches % args.grad_accum_steps
 
   # Run for the specified number of epochs.
   sync_if_cuda()
@@ -278,17 +281,23 @@ def train(args):
       b_ids = b_ids.to(device)
       b_mask = b_mask.to(device)
 
+      is_last_batch = num_batches + 1 == total_batches
+      step_gradient = (num_batches + 1) % args.grad_accum_steps == 0 or is_last_batch
+      grad_normalizer = uneven_batches if is_last_batch and uneven_batches else args.grad_accum_steps
+
       # Mixed Precision training on GPU
       if args.use_gpu:
         with torch.autocast(device_type=device.type, dtype=torch.float16):
           logits, _ = model(b_ids, b_mask)
           logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
           labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
-          loss = F.cross_entropy(logits, labels, reduction='mean') / args.grad_accum_steps
+          loss = F.cross_entropy(logits, labels, reduction='mean')
+        train_loss += loss.item()
+        loss /= grad_normalizer
         scaler.scale(loss).backward()
 
         # Gradient accumulation
-        if (num_batches + 1) % args.grad_accum_steps == 0:
+        if step_gradient:
           scaler.step(optimizer)
           optimizer.zero_grad()
           scaler.update()
@@ -297,19 +306,19 @@ def train(args):
         logits, _ = model(b_ids, b_mask)
         logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
         labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
-        loss = F.cross_entropy(logits, labels, reduction='mean') / args.grad_accum_steps
+        loss = F.cross_entropy(logits, labels, reduction='mean')
+        train_loss += loss.item()
+        loss /= grad_normalizer
         loss.backward()
         
         # Gradient accumulation
-        if (num_batches + 1) % args.grad_accum_steps == 0:
+        if step_gradient:
           optimizer.step()
           optimizer.zero_grad()
 
-      train_loss += loss.item()
       num_batches += 1
 
-    # Loss has been divideb by acumm_steps to normalize the gradient that will acumulate, so now need to rescale
-    train_loss = train_loss * args.grad_accum_steps / num_batches
+    train_loss = train_loss / num_batches
     train_loss_history.append(train_loss)
 
     print("Evaluating on dev held out sonnets") ### EVALUATION CODE IS NOT BATCHED SINCE MODEL.GENERATE() ISNT ORIGINALLY BATCHED
@@ -343,8 +352,12 @@ def train(args):
     if total_chrf > best_chrf:
       best_chrf = total_chrf
       args.best_epoch = epoch
-      save_model(model, optimizer, args, args.filepath)
       epochs_without_improvement = 0 
+      # Save time until best epoch
+      sync_if_cuda()
+      args.best_epoch_time = (time.time() - start) / 60
+      
+      save_model(model, optimizer, args, args.filepath)
 
     else:
       epochs_without_improvement += 1
