@@ -19,7 +19,7 @@ from datasets import (
 )
 
 
-TQDM_DISABLE = False
+TQDM_DISABLE = True
 
 
 @torch.no_grad()

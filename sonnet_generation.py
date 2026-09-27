@@ -291,7 +291,7 @@ def train(args):
           logits, _ = model(b_ids, b_mask)
           logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
           labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
-          loss = F.cross_entropy(logits, labels, reduction='mean')
+          loss = F.cross_entropy(logits, labels, reduction='mean') # ignora index -100 por default
         train_loss += loss.item()
         loss /= grad_normalizer
         scaler.scale(loss).backward()
@@ -330,7 +330,7 @@ def train(args):
 
     generated_sonnets = []
     with torch.no_grad():
-      for sonnet_held_out in tqdm(held_out_sonnet_dataset, total=len(held_out_sonnet_dataset)):
+      for sonnet_held_out in tqdm(held_out_sonnet_dataset, total=len(held_out_sonnet_dataset), disable=TQDM_DISABLE):
         sonnet_id = sonnet_held_out[0]
         encoding = model.tokenizer(sonnet_held_out[1], return_tensors='pt', padding=True, truncation=True).to(device)
         
@@ -408,7 +408,7 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
 
 
   print("Generating dev sonnets")
-  for sonnet_held_out in tqdm(dev_dataset, total=len(dev_dataset)):
+  for sonnet_held_out in tqdm(dev_dataset, total=len(dev_dataset), disable=TQDM_DISABLE):
 
     # Sonnet generation
     sonnet_id = sonnet_held_out[0]
@@ -433,7 +433,7 @@ def generate_submission_sonnets(args): ### EVALUATION CODE IS NOT BATCHED SINCE 
 
   test_sonnets = []
   print("Generating test sonnets...")
-  for batch in tqdm(test_dataset):
+  for batch in tqdm(test_dataset, disable=TQDM_DISABLE):
     sonnet_id = batch[0]
     encoding = model.tokenizer(batch[1], return_tensors='pt', padding=False, truncation=True).to(device)
 
