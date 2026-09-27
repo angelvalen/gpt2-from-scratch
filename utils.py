@@ -422,22 +422,24 @@ def add_size_arguments(args):
 
 
 def setup_finetune_mode(gpt, args):
-  assert args.fine_tune_mode in ["last-linear-layer", "full-model", "lora"]
+  assert args.fine_tune_mode in ["last-linear-layer", "full-model", "lora", "bitfit"]
   if args.fine_tune_mode == "lora":
-      lora_config = LoraConfig(
-          r=args.lora_r,
-          lora_alpha=args.lora_alpha,
-          target_modules=args.lora_target_modules,
-          lora_dropout=args.lora_dropout,
-          bias=args.lora_bias,
-      )
-      gpt = get_peft_model(gpt, lora_config)
+    lora_config = LoraConfig(
+      r=args.lora_r,
+      lora_alpha=args.lora_alpha,
+      target_modules=args.lora_target_modules,
+      lora_dropout=args.lora_dropout,
+      bias=args.lora_bias,
+    )
+    gpt = get_peft_model(gpt, lora_config)
   else:
-      for param in gpt.parameters():
-          if args.fine_tune_mode == 'last-linear-layer':
-              param.requires_grad = False
-          elif args.fine_tune_mode == 'full-model':
-              param.requires_grad = True
+    for name, param in gpt.named_parameters():
+      if args.fine_tune_mode == 'last-linear-layer':
+        param.requires_grad = False
+      elif args.fine_tune_mode == "bitfit":
+        param.requires_grad = "bias" in name
+      elif args.fine_tune_mode == 'full-model':
+        param.requires_grad = True
   return gpt
 
 

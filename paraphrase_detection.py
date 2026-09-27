@@ -299,8 +299,8 @@ def get_args():
   parser.add_argument("--grad_accum_steps", help='Accumulation steps for gradient updates.', type=int, default=1)
 
   parser.add_argument("--fine-tune-mode", type=str,
-                      help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well; lora: use LoRA adapters',
-                      choices=('last-linear-layer', 'full-model', 'lora'), default="last-linear-layer")
+                      help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well; lora: use LoRA adapters; bitfit: ft bias',
+                      choices=('last-linear-layer', 'full-model', 'lora', "bitfit"), default="last-linear-layer")
   # LoRA config
   parser.add_argument("--lora_r", type=int, default=8)
   parser.add_argument("--lora_alpha", type=int, default=16)

@@ -262,8 +262,8 @@ def get_args():
   parser.add_argument("--epochs", type=int, default=50)
   parser.add_argument("--patience", type=int, default=5)
   parser.add_argument("--fine-tune-mode", type=str,
-                      help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well; lora: use LoRA adapters',
-                      choices=('last-linear-layer', 'full-model', 'lora'), default="last-linear-layer")
+                      help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well; lora: use LoRA adapters; bitfit: ft bias',
+                      choices=('last-linear-layer', 'full-model', 'lora', "bitfit"), default="last-linear-layer")
   parser.add_argument("--use_gpu", action='store_true')
   parser.add_argument("--keep_model_checkpoint", action='store_true')
 

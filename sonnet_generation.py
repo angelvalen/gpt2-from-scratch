@@ -520,8 +520,8 @@ def get_args():
   parser.add_argument("--lora_target_modules", nargs="+", default=["query", "key", "value", "attention_dense"])
   parser.add_argument("--lora_bias", type=str, default="none", choices=["none", "all", "lora_only"])
   parser.add_argument("--fine-tune-mode", type=str,
-                      help='full-model: GPT parameters are updated as well; lora: use LoRA adapters',
-                      choices=('full-model', 'lora'), default="full-model")
+                      help='full-model: GPT parameters are updated as well; lora: use LoRA adapters; bitfit: ft bias',
+                      choices=('full-model', 'lora', "bitfit"), default="full-model")
   
   args = parser.parse_args()
   return args
