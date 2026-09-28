@@ -492,7 +492,7 @@ def get_args():
 
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=50)
-  parser.add_argument("--patience", type=int, default=5)
+  parser.add_argument("--patience", type=int, default=10)
   parser.add_argument("--use_gpu", action='store_true')
   parser.add_argument("--keep_model_checkpoint", action='store_true')
 

@@ -62,3 +62,9 @@ Lr per fine-tune-mode:
 LoRA: 1e-4
 Full model: 1e-5
 last-linear-layer: 1e-3
+
+# next 
+dec -> lr = lr / 2
+set sonnet patience 10, rerun
+dec all full model medium
+dec cficdb lll and lora
