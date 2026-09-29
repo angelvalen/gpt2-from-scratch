@@ -13,6 +13,7 @@ transformers==4.46.3
 sacrebleu==2.5.1
 numpy
 matplotlib
+pandas
 peft
 torchao>=0.16.0
 huggingface_hub>=0.25.0

@@ -68,3 +68,23 @@ dec -> lr = lr / 2
 set sonnet patience 10, rerun
 dec all full model medium
 dec cficdb lll and lora
+
+# next
+regularize cfimdb medium:
+lll: last dropout 0.3
+lora: lora droout 0.1
+full: wd 0.05
+
+# next
+why sst full model < lora on all sizes? sst:
+check small full model with higher lr 3e-5
+check all sizes full model regularized: wd 0.05, lldrop 0.2
+!! Unresolved
+
+# next
+test all tasks large lll and lora: lr /= 3
+
+# next?
+continuar cambios que han ido bien:
+- cfimdb lora y full medium seguir regularizando, si va bien, aplicar a (large lora /3, que tambien fue mejor que large normal)
+- tal vez subir lr de baseline en tasks que hayan empeorado tras bajarlo
