@@ -6,3 +6,6 @@
 .idea/
 out/
 .venv
+output
+*.npy
+notes.md

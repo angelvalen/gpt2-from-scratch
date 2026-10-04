@@ -275,10 +275,10 @@ def get_args():
   parser.add_argument("--para_train", type=str, default="data/quora-train.csv")
   parser.add_argument("--para_dev", type=str, default="data/quora-dev.csv")
   parser.add_argument("--para_test", type=str, default="data/quora-test-student.csv")
-  parser.add_argument("--para_dev_out", type=str, default=f"paraphrase_results/{timestamp}/para-dev-output.csv")
-  parser.add_argument("--para_test_out", type=str, default=f"paraphrase_results/{timestamp}/para-test-output.csv")
-  parser.add_argument("--summary_path", type=str, default=f"paraphrase_results/paraphrase_summaries.jsonl")
-  parser.add_argument("--plot_path", type=str, default=f"paraphrase_results/{timestamp}/training_evolution.png")
+  parser.add_argument("--para_dev_out", type=str, default=f"output/paraphrase/{timestamp}/para-dev-output.csv")
+  parser.add_argument("--para_test_out", type=str, default=f"output/paraphrase/{timestamp}/para-test-output.csv")
+  parser.add_argument("--summary_path", type=str, default=f"results/paraphrase_summaries.jsonl")
+  parser.add_argument("--plot_path", type=str, default=f"output/paraphrase/{timestamp}/training_evolution.png")
 
   parser.add_argument("--small_datasets", action="store_true",
                        help="If selected, cuts train, dev and test datasets to be a tenth of their lengths")

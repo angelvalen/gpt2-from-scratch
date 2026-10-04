@@ -296,10 +296,10 @@ if __name__ == "__main__":
   args.train=f'data/ids-{args.mode}-train.csv'
   args.dev=f'data/ids-{args.mode}-dev.csv'
   args.test=f'data/ids-{args.mode}-test-student.csv'
-  args.dev_out=f"sentiment_results/{timestamp}/dev_out.csv"
-  args.test_out=f"sentiment_results/{timestamp}/test_out.csv"
-  args.summary_path=f"sentiment_results/sentiment_summaries.jsonl"
-  args.plot_path=f"sentiment_results/{timestamp}/training_evolution.png"
+  args.dev_out=f"output/sentiment/{timestamp}/dev_out.csv"
+  args.test_out=f"output/sentiment/{timestamp}/test_out.csv"
+  args.summary_path=f"results/sentiment_summaries.jsonl"
+  args.plot_path=f"output/sentiment/{timestamp}/training_evolution.png"
 
   print(f'\n ==== Training Sentiment Classifier on {args.mode.upper()}... ====\n')
   train(args)
